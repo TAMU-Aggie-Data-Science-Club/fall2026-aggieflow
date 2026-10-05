@@ -7,7 +7,8 @@
 # â”€â”€ Project Managers (code owners for main-branch merges) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Full name        GitHub handle    Email
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# (add PMs here when the project starts, one per line)
+# Siddharth        @aguw0kie124     siddharth77@tamu.edu
+# Krish Jayanth    @krishjayanth    krishjay17@tamu.edu
 
 # â”€â”€ Members â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Full name        GitHub handle    Email
@@ -21,7 +22,7 @@
 # PMs: to grant a member the ability to approve main-merges, add their
 # @handle to the line below.
 
-* @TAMU-Aggie-Data-Science-Club/officers
+* @TAMU-Aggie-Data-Science-Club/officers @aguw0kie124 @krishjayanth
 
 # â”€â”€ Officer-locked paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Workflows and secret-scanning config carry security implications.
