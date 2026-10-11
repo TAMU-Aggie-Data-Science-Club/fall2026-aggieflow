@@ -29,7 +29,7 @@ Build an assistant that answers Texas A&M students' academic and campus question
 | # | Deliverable | Description | Owner (role) | Target | Status |
 |---|-------------|-------------|--------------|--------|--------|
 | 1 | Project scoping | Problem statement, audience, and example questions in the README. | PM | Week 1 | Done |
-| 2 | Source list & vetting | Finish the source sheet, check each source's terms and sensitivity, and record adopted sources in [`DATA.md`](DATA.md). Official TAMU sites go first; RateMyProfessors, Reddit, and Anex.us need PM sign-off because their terms limit scraping or are unclear. | PM + members | Weeks 1–3 | In progress |
+| 2 | Source list & vetting | Finish the source sheet, check each source's terms and sensitivity, and record adopted sources in [`DATA.md`](DATA.md). | PM + members | Weeks 1–3 | In progress |
 | 3 | Evaluation question set | ~50 real student questions, each with the correct answer and source URL. A held-out group is set aside until final evaluation so we don't tune to it. | Members | Weeks 2–3 | Not started |
 | 4 | Collection & cleaning pipeline | Reproducible Playwright scripts that fetch adopted sources into `data/raw/` and produce clean text in `data/processed/`, keeping the source URL with every passage for citations. Passages and their embeddings are loaded into PostgreSQL with pgvector. | Members | Weeks 3–4 | Not started |
 | 5 | Baseline Q&A | First end-to-end RAG pipeline in LangGraph: retrieve relevant passages from pgvector, generate an answer, cite the source. Exposed through a FastAPI endpoint and scored on the question set to get a number to beat. | Members | Weeks 4–5 | Not started |
