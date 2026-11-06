@@ -1,6 +1,6 @@
 # Deliverable 3: Collect your source
 
-**Issue:** see the [deliverable-3 issues](https://github.com/TAMU-Aggie-Data-Science-Club/fall2026-aggieflow/issues?q=is%3Aopen+label%3Adeliverable-3) · **Due:** Sunday, November 15, 2026 · **Time:** about 4 hours
+**Issue:** [#30](https://github.com/TAMU-Aggie-Data-Science-Club/fall2026-aggieflow/issues/30) · **Due:** Sunday, November 15, 2026 · **Time:** about 4 hours
 
 In Deliverable 2 you mapped a source. This week you write the code that collects its data. You'll also write the questions we'll use to test AggieFlow. By the end of the week we'll have real data from every source, all in one format, plus a test set to score the assistant against.
 
