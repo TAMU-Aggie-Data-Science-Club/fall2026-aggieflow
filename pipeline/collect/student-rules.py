@@ -112,6 +112,11 @@ def page_blocks(content_html):
         box.decompose()
     for tag in soup(["script", "style", "form", "button", "input", "textarea", "label"]):
         tag.decompose()
+    # Some pages end with a plain "Propose a Student Rule Revision" link instead.
+    for link in soup.select('a[href*="propose-revision"]'):
+        block = link.find_parent(["p", "h2", "h3", "h4"])
+        if block and clean_text(block.get_text(" ")) == clean_text(link.get_text(" ")):
+            block.decompose()
 
     blocks = []
     for el in soup.find_all(["h2", "h3", "h4", "p", "li", "tr", "blockquote"]):
@@ -126,6 +131,11 @@ def page_blocks(content_html):
         if not text:
             continue
         kind = "heading" if el.name in ("h2", "h3", "h4") else "text"
+        # A short paragraph that is all bold, like <p><strong>Procedures</strong></p>,
+        # is a sub-heading too.
+        bold = el.find("strong") if el.name == "p" else None
+        if bold and clean_text(bold.get_text(" ")) == text and words(text) <= 8:
+            kind = "heading"
         blocks.append((kind, text))
     return blocks
 
