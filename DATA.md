@@ -33,6 +33,7 @@ Document every source here as you adopt it. Replace these placeholders.
 | Source | Origin / URL | Access method | License | Sensitivity | Notes |
 |--------|--------------|---------------|---------|-------------|-------|
 | _e.g. Example Open Dataset_ | `https://…` | Manual download → `data/raw/` | CC-BY-4.0 | None | Updated annually |
+| Texas A&M Student Rules | `https://student-rules.tamu.edu` | WordPress REST API (`/wp-json/wp/v2/pages?per_page=100`, one request for all 81 pages) via `python pipeline/collect/student-rules.py` → `data/raw/student-rules/`, `data/processed/student-rules.jsonl` | TBD (official public TAMU site, no license stated) | None (published policy text; the Campus Contacts page lists staff work emails and phone numbers) | Official source run by the Office of the Vice President for Student Affairs. Changes a few times a year, mostly in August; each page's `modified` date shows when. `robots.txt` sets `Crawl-delay: 10`. The `propose-revision` form page is skipped. |
 | | | | | | |
 
 ## Local layout convention
