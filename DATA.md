@@ -33,6 +33,7 @@ Document every source here as you adopt it. Replace these placeholders.
 | Source | Origin / URL | Access method | License | Sensitivity | Notes |
 |--------|--------------|---------------|---------|-------------|-------|
 | _e.g. Example Open Dataset_ | `https://…` | Manual download → `data/raw/` | CC-BY-4.0 | None | Updated annually |
+| TAMU Technology Services Website | `https://www.it.tamu.edu/sitemap.xml` | Manual download → `data/raw/` | © 2026 Texas A&M University | None | TBD |
 | | | | | | |
 
 ## Local layout convention
