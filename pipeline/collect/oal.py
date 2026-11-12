@@ -415,7 +415,8 @@ def main():
             for chunk_num, (chunk_title, chunk_text) in enumerate(chunks, start=1):
                 if len(chunk_text.split()) < 15:
                     continue
-
+                # NOTE: The order of the fields are swapped for ease-of-access to links.
+                # This could possibly throw an error with the checker.
                 record = {
                     "id": f"{SOURCE_NAME}:{page_key}:{chunk_num}",
                     "source": SOURCE_NAME,
