@@ -2,6 +2,7 @@
 
     python eval/score.py                 # the real agent (agent.run.answer)
     python eval/score.py --dummy         # always "I'm not sure.", no API key needed
+    python eval/score.py --d1 deliverable1/rushil.py   # a Deliverable 1 agent
     python eval/score.py --questions eval/questions/student-rules-rushilsagar.jsonl
 
 Reads every eval/questions/*.jsonl file (format in deliverable3/README.md, Part 2) and
@@ -17,6 +18,7 @@ agent's packages installed.
 """
 
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -58,6 +60,37 @@ def agent_answer(question: str) -> dict:
     from agent.run import answer
 
     return answer(question)
+
+
+def d1_result(text: str) -> dict:
+    """A Deliverable 1 answer in the scorer's shape.
+
+    D1 agents return one string and cite with a "Source: <url>" line (see
+    deliverable1/TUTORIAL.md), so every such line becomes a source. The text is
+    kept whole: the scorer only looks for "not sure" in it.
+    """
+    urls = [line[len("Source:"):].strip() for line in text.splitlines()
+            if line.startswith("Source:")]
+    return {"answer": text, "sources": [{"source_url": url} for url in urls if url]}
+
+
+def d1_answer_fn(path: Path):
+    """An answer function for a Deliverable 1 file, e.g. deliverable1/rushil.py.
+
+    The file builds its graph as `agent` at import, so it is loaded once here and
+    not once per question. Loading by path keeps its `if __name__ == "__main__"`
+    demo from running, and needs no __init__.py in deliverable1/.
+    """
+    spec = importlib.util.spec_from_file_location("d1_agent", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # the importlib recipe; typing looks classes up here
+    spec.loader.exec_module(module)
+    agent = module.agent
+
+    def answer(question: str) -> dict:
+        return d1_result(agent.invoke({"question": question})["answer"])
+
+    return answer
 
 
 def question_files(path: Path) -> list[Path]:
@@ -126,8 +159,11 @@ def report_line(name: str, c: dict) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dummy", action="store_true",
-                        help="use a dummy that always says it is not sure (no API key needed)")
+    agent_choice = parser.add_mutually_exclusive_group()
+    agent_choice.add_argument("--dummy", action="store_true",
+                              help="use a dummy that always says it is not sure (no API key needed)")
+    agent_choice.add_argument("--d1", type=Path, metavar="PATH",
+                              help="score a Deliverable 1 agent file instead of the real agent")
     parser.add_argument("--questions", type=Path, default=QUESTIONS,
                         help="a .jsonl file or a folder of them (default: eval/questions)")
     args = parser.parse_args(argv)
@@ -138,6 +174,13 @@ def main(argv=None) -> int:
         return 1
 
     answer_fn = dummy_answer if args.dummy else agent_answer
+    if args.d1:
+        # Loaded once, so a file that cannot load is a usage error, not 10 errors.
+        try:
+            answer_fn = d1_answer_fn(args.d1)
+        except Exception as err:
+            print(f"Could not load {args.d1}: {type(err).__name__}: {err}", file=sys.stderr)
+            return 1
     total = dict.fromkeys(COUNTS, 0)
     for path in files:
         counts = score(load_questions(path), answer_fn)

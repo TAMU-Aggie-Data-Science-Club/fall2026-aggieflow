@@ -229,6 +229,99 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(done.stdout.strip(), "[]")
 
 
+# A stand-in for a deliverable1/<name>.py file: it builds `agent` at import and
+# answers in the tutorial's shape, without langgraph.
+FAKE_D1 = f'''
+REPLIES = {{
+    "how many q drops do i get": "You get four.\\nSource: {RULE01}",
+    "when is a doctors note due": "Three days.\\nSource: {RULE01}\\nSource: http://student-rules.tamu.edu/rule07",
+    "how much is a parking permit": "I'm not sure. Try the Registrar: https://registrar.tamu.edu",
+}}
+
+
+class Agent:
+    def invoke(self, state):
+        return {{"question": state["question"], "answer": REPLIES[state["question"]]}}
+
+
+agent = Agent()
+
+if __name__ == "__main__":
+    print("the demo block ran")
+'''
+
+
+class D1Test(unittest.TestCase):
+    def test_every_source_line_becomes_a_source(self):
+        text = f"Three days.\nSource: {RULE01}\nSource:   {RULE07}  \nSource:"
+        self.assertEqual(score.d1_result(text), {
+            "answer": text, "sources": [{"source_url": RULE01}, {"source_url": RULE07}]})
+
+    def test_only_lines_that_start_with_source_count(self):
+        text = f"See the Source: {RULE01} page.\n  Source: {RULE07}\nsource: {RULE07}"
+        self.assertEqual(score.d1_result(text)["sources"], [])
+        self.assertEqual(score.d1_result("I'm not sure.")["sources"], [])
+
+    def test_scores_a_d1_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Path(tmp) / "fake-d1.py"
+            agent.write_text(FAKE_D1, encoding="utf-8")
+            path = write_jsonl(tmp, "q.jsonl", QUESTIONS)
+            code, out, err = run_main(["--d1", str(agent), "--questions", str(path)])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(err, "")
+        self.assertNotIn("the demo block ran", out)
+        self.assertEqual(out.splitlines()[-1], "TOTAL: cited the expected page 2/2, "
+                         "said not sure correctly 1/1, wrongly not sure 0, errors 0")
+
+    def test_bad_answers_from_a_d1_agent_are_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Path(tmp) / "broken.py"
+            agent.write_text(
+                "class Agent:\n"
+                "    def invoke(self, state):\n"
+                "        if 'q drops' in state['question']:\n"
+                "            return {'question': state['question']}\n"  # no "answer"
+                "        return {'answer': None}\n"
+                "agent = Agent()\n", encoding="utf-8")
+            path = write_jsonl(tmp, "q.jsonl", QUESTIONS)
+            code, out, err = run_main(["--d1", str(agent), "--questions", str(path)])
+        self.assertEqual(code, 0)
+        self.assertTrue(out.splitlines()[-1].endswith("errors 3"))
+        self.assertIn("t-01: error: KeyError", err)
+
+    def test_a_file_that_cannot_load_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_jsonl(tmp, "q.jsonl", QUESTIONS)
+            no_agent = Path(tmp) / "no_agent.py"
+            no_agent.write_text("graph = None\n", encoding="utf-8")
+            for d1, message in [(Path(tmp) / "missing.py", "FileNotFoundError"),
+                                (no_agent, "AttributeError")]:
+                code, out, err = run_main(["--d1", str(d1), "--questions", str(path)])
+                self.assertEqual(code, 1, d1)
+                self.assertEqual(out, "")
+                self.assertIn(f"Could not load {d1}: {message}", err)
+
+    def test_d1_and_dummy_cannot_be_combined(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as stop:
+            score.main(["--dummy", "--d1", "x.py"])
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn("not allowed with argument", err.getvalue())
+
+    def test_d1_from_the_command_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Path(tmp) / "fake-d1.py"
+            agent.write_text(FAKE_D1, encoding="utf-8")
+            path = write_jsonl(tmp, "q.jsonl", QUESTIONS)
+            done = subprocess.run([sys.executable, str(SCORE_PY), "--d1", str(agent),
+                                   "--questions", str(path)],
+                                  cwd=tmp, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("the demo block ran", done.stdout)
+        self.assertTrue(done.stdout.splitlines()[-1].startswith("TOTAL: cited the expected page 2/2"))
+
+
 def _installed(*names):
     return all(importlib.util.find_spec(n) for n in names)
 
