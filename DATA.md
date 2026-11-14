@@ -34,7 +34,27 @@ Document every source here as you adopt it. Replace these placeholders.
 |--------|--------------|---------------|---------|-------------|-------|
 | _e.g. Example Open Dataset_ | `https://…` | Manual download → `data/raw/` | CC-BY-4.0 | None | Updated annually |
 | Texas A&M Student Rules | `https://student-rules.tamu.edu` | WordPress REST API (`/wp-json/wp/v2/pages?per_page=100`, one request for all 81 pages) via `python pipeline/collect/student-rules.py` → `data/raw/student-rules/`, `data/processed/student-rules.jsonl` | TBD (official public TAMU site, no license stated) | None (published policy text; the Campus Contacts page lists staff work emails and phone numbers) | Official source run by the Office of the Vice President for Student Affairs. Changes a few times a year, mostly in August; each page's `modified` date shows when. `robots.txt` sets `Crawl-delay: 10`. The `propose-revision` form page is skipped. |
-| | | | | | |
+| Texas A&M Academic Calendar | `https://calendar.tamu.edu/live/rss/events/group/Office%20of%20the%20Registrar/` (tags: `fall%202026`, `spring%202027`, `summer%202027`) | RSS feeds via `python pipeline/collect/registrar.py` → `data/raw/registrar/calendar-*.xml`, `data/processed/registrar.jsonl` | TBD (official public TAMU calendar; no license confirmed) | None (public academic dates and event descriptions) | Covers Fall 2026, Spring 2027, and Summer 2027. The collector downloads the original RSS files with at least one second between requests and groups events into passages of approximately 100–400 words. |
+| Texas A&M Registrar Pages | `https://registrar.tamu.edu` (Q-Drops, Graduation FAQs, Grading, Registration & Scheduling) | Save pages in Chrome as HTML Only → `data/raw/registrar/`; process with `python pipeline/collect/registrar.py` → `data/processed/registrar.jsonl` | TBD (official public TAMU pages; no license confirmed) | None (public policies and general contact information) | Direct Python requests to the Registrar HTML pages returned 404/S3 errors, although the pages loaded in Chrome. PM approved manually saving four public HTML pages. The collector reads these snapshots locally; they must be refreshed manually when the source changes. |
+
+### Registrar collector
+
+Run from the repository root:
+
+```bash
+python pipeline/collect/registrar.py
+```
+
+Before running, save these four public Registrar pages from Chrome using **Save Page As → Webpage, HTML Only**, with the following filenames in `data/raw/registrar/`:
+
+- `grading.html` — https://registrar.tamu.edu/academic-services/grading/index.html
+- `graduation-faqs.html` — https://registrar.tamu.edu/graduation/faqs/index.html
+- `q-drops.html` — https://registrar.tamu.edu/academic-services/records-administration-archives/q-drops.html
+- `registration.html` — https://registrar.tamu.edu/registration-scheduling-and-analytics/index.html
+
+The collector downloads the three academic calendar RSS feeds automatically, processes the saved HTML pages, and writes passages to `data/processed/registrar.jsonl`. Each record contains `id`, `source`, `title`, `text`, `source_url`, and `fetched_at`.
+
+The HTML files are manually captured snapshots, so `fetched_at` reflects processing time rather than the original Chrome download time. The collector checks that all four HTML files exist and validates the output format. Keep all raw and processed data local; the `data/` directory is git-ignored.
 
 ## Local layout convention
 
