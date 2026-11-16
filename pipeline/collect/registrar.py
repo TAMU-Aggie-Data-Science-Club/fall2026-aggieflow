@@ -1,14 +1,20 @@
 """Collect public information from the TAMU Registrar website.
 
+Pages come from https://registrar.tamu.edu/sitemap.xml (policies, degree
+audit, grading, graduation, FERPA, curricular services and recent news).
+Academic calendar events come from the Registrar's RSS feeds.
+
 Run from the repository root:
     python pipeline/collect/registrar.py
 
 Outputs:
-    data/raw/registrar/
+    data/raw/registrar/sitemap.xml, pages/*.html, calendar-*.xml
     data/processed/registrar.jsonl
 """
 
 import json
+import re
+import shutil
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -20,22 +26,31 @@ from bs4 import BeautifulSoup
 
 SOURCE = "registrar"
 USER_AGENT = "AggieFlowCollector/0.1 (TAMU Aggie Data Science Club student project)"
+# registrar.tamu.edu returns 404 to any request that doesn't look like a
+# browser, including the collector user agent above. The PM approved sending
+# a browser user agent for these public pages on Nov 16, 2026 (see DATA.md).
+# The calendar feeds on calendar.tamu.edu still use USER_AGENT.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+)
+
+BASE_URL = "https://registrar.tamu.edu"
+SITEMAP_URL = f"{BASE_URL}/sitemap.xml"
+# Pages that are only lists of links, plus news from 2024 and earlier, which
+# is out of date for student questions.
+SKIP_PAGES = re.compile(
+    r"^/(search\.html|news/index\.html|news/newsfeed\.html|news/20(1\d|2[0-4])/)"
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = REPO_ROOT / "data" / "raw" / SOURCE
+PAGES_DIR = RAW_DIR / "pages"
 OUT_FILE = REPO_ROOT / "data" / "processed" / f"{SOURCE}.jsonl"
 
 MIN_WORDS = 100
 MAX_WORDS = 400
 TARGET_WORDS = 250
-
-# Original URLs for the HTML pages manually saved from Chrome.
-PAGE_URLS = {
-    "grading.html": "https://registrar.tamu.edu/academic-services/grading/index.html",
-    "graduation-faqs.html": "https://registrar.tamu.edu/graduation/faqs/index.html",
-    "q-drops.html": "https://registrar.tamu.edu/academic-services/records-administration-archives/q-drops.html",
-    "registration.html": "https://registrar.tamu.edu/registration-scheduling-and-analytics/index.html",
-}
 
 CALENDAR_PAGES = {
     "fall-2026": "https://registrar.tamu.edu/academic-calendar/fall-2026.html",
@@ -124,7 +139,7 @@ def build_calendar_passages(events, semester):
     """Group calendar events into passages of about 100–400 words."""
     passages = []
     current = []
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = now_utc()
 
     for event in events:
         # Keep events together until the passage reaches its target size.
@@ -171,20 +186,63 @@ def build_calendar_passages(events, semester):
     return passages
 
 
-def load_html_pages():
-    """Read the Registrar HTML pages manually saved from Chrome."""
+def now_utc():
+    """Current time in the passage format, e.g. 2026-11-16T18:04:00Z."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def page_key(url):
+    """'https://registrar.tamu.edu/graduation/faqs/index.html' -> 'graduation/faqs'."""
+    path = url[len(BASE_URL):].strip("/")
+    path = re.sub(r"(^|/)index\.html$", "", path)
+    return re.sub(r"\.html$", "", path) or "home"
+
+
+def sitemap_urls(sitemap_xml):
+    """Registrar page URLs from the sitemap, minus the skipped ones."""
+    root = ET.fromstring(sitemap_xml)
+    urls = []
+    # The sitemap uses an https:// namespace instead of the standard http://
+    # one, so match <loc> in any namespace.
+    for loc in root.findall(".//{*}loc"):
+        url = (loc.text or "").strip()
+        if not url.startswith(BASE_URL):
+            continue
+        if SKIP_PAGES.match(url[len(BASE_URL):]):
+            continue
+        urls.append(url)
+    return sorted(set(urls))
+
+
+def fetch_html_pages():
+    """Fetch every page in the sitemap. Returns a list of (url, html, fetched_at)."""
+    session = requests.Session()
+    session.headers["User-Agent"] = BROWSER_USER_AGENT
+
+    if PAGES_DIR.exists():
+        shutil.rmtree(PAGES_DIR)
+    PAGES_DIR.mkdir(parents=True)
+
+    response = session.get(SITEMAP_URL, timeout=60)
+    response.raise_for_status()
+    (RAW_DIR / "sitemap.xml").write_bytes(response.content)
+    urls = sitemap_urls(response.content)
+    print(f"Fetching {len(urls)} pages from the sitemap")
+
     pages = []
+    for url in urls:
+        # Respect the minimum one-second request delay.
+        time.sleep(1)
+        response = session.get(url, timeout=60)
+        if response.status_code == 404:
+            print(f"  404, skipped: {url}")
+            continue
+        response.raise_for_status()
 
-    # All four HTML snapshots are required for the complete dataset.
-    for filename in PAGE_URLS:
-        if not (RAW_DIR / filename).is_file():
-            raise FileNotFoundError(
-                f"Missing {filename}. Save the Registrar page from Chrome first."
-            )
-
-    for file in sorted(RAW_DIR.glob("*.html")):
-        html_text = file.read_text(encoding="utf-8")
-        pages.append((file.name, html_text))
+        # Preserve the original HTML.
+        raw_file = PAGES_DIR / (page_key(url).replace("/", "__") + ".html")
+        raw_file.write_bytes(response.content)
+        pages.append((url, response.text, now_utc()))
 
     return pages
 
@@ -204,6 +262,10 @@ def page_blocks(html_text):
     for element in main.find_all(
         ["script", "style", "nav", "footer", "form", "button"]
     ):
+        element.decompose()
+
+    # Remove the "Home > Academic Services > ..." breadcrumb trail.
+    for element in main.select("[class*=breadcrumb]"):
         element.decompose()
 
     blocks = []
@@ -266,7 +328,18 @@ def chunk_page(blocks):
     chunks = []
     current = []
 
+    # Split any single block longer than MAX_WORDS (a long table or list)
+    # into MAX_WORDS-sized pieces so no passage is oversized.
+    sized = []
     for block_type, text in blocks:
+        tokens = text.split()
+        if block_type == "text" and len(tokens) > MAX_WORDS:
+            for start in range(0, len(tokens), TARGET_WORDS):
+                sized.append(("text", " ".join(tokens[start:start + TARGET_WORDS])))
+        else:
+            sized.append((block_type, text))
+
+    for block_type, text in sized:
         # Keep headings with the following section.
         if block_type == "heading":
             current.append(text)
@@ -285,26 +358,43 @@ def chunk_page(blocks):
     if current:
         chunks.append(" ".join(current))
 
+    # Merge a short final chunk if the combined length stays within the limit.
+    if len(chunks) >= 2 and word_count(chunks[-1]) < MIN_WORDS:
+        combined = chunks[-2] + " " + chunks[-1]
+        if word_count(combined) <= MAX_WORDS:
+            chunks[-2:] = [combined]
+
     return chunks
 
 
-def build_passages(pages):
-    """Convert saved HTML pages into structured passage records."""
-    passages = []
-    fetched_at = datetime.now(timezone.utc).isoformat()
+def page_title(html_text, fallback):
+    """The page's h1, or its <title> without the site name."""
+    soup = BeautifulSoup(html_text, "html.parser")
+    h1 = soup.find("h1")
+    if h1 and h1.get_text(strip=True):
+        return " ".join(h1.get_text(" ", strip=True).split())
+    if soup.title:
+        title = " ".join(soup.title.get_text().split()).split(" | ")[0]
+        if title:
+            return title
+    return fallback
 
-    for filename, html_text in pages:
-        source_url = PAGE_URLS[filename]
-        page_key = Path(filename).stem
+
+def build_passages(pages):
+    """Convert fetched HTML pages into structured passage records."""
+    passages = []
+
+    for source_url, html_text, fetched_at in pages:
+        key = page_key(source_url)
 
         blocks = page_blocks(html_text)
         chunks = chunk_page(blocks)
 
-        title = blocks[0][1] if blocks else page_key
+        title = page_title(html_text, key)
 
         for i, chunk in enumerate(chunks, start=1):
             passages.append({
-                "id": f"{SOURCE}:{page_key}:{i}",
+                "id": f"{SOURCE}:{key}:{i}",
                 "source": SOURCE,
                 "title": title,
                 "text": chunk,
@@ -333,6 +423,7 @@ def validate_passages():
     }
     seen_ids = set()
     errors = []
+    warnings = 0
     count = 0
 
     with OUT_FILE.open("r", encoding="utf-8") as file:
@@ -355,9 +446,11 @@ def validate_passages():
             if not passage.get("title") or not passage.get("text"):
                 errors.append(f"Line {line_number}: empty title or text")
 
+            # Short or long passages are worth a look but allowed, as in
+            # pipeline/check.py (some Registrar pages are only a few lines).
             words = word_count(passage.get("text", ""))
             if not MIN_WORDS <= words <= MAX_WORDS:
-                errors.append(f"Line {line_number}: {words} words")
+                warnings += 1
 
             url = passage.get("source_url", "")
             if not url.startswith("https://"):
@@ -371,7 +464,7 @@ def validate_passages():
             except (ValueError, KeyError, TypeError):
                 errors.append(f"Line {line_number}: invalid timestamp")
 
-    print(f"Validated {count} passages.")
+    print(f"Validated {count} passages ({warnings} outside {MIN_WORDS}-{MAX_WORDS} words).")
 
     if errors:
         for error in errors:
@@ -386,8 +479,8 @@ def main():
     # Download the latest RSS feeds for all three semesters.
     fetch_calendar()
 
-    # Process the locally saved HTML pages.
-    pages = load_html_pages()
+    # Fetch every Registrar page listed in the sitemap.
+    pages = fetch_html_pages()
     html_passages = build_passages(pages)
 
     # Process each semester's calendar events.
