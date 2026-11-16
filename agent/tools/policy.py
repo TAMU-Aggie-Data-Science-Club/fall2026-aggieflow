@@ -1,6 +1,6 @@
 """policy_tools: search over indexed sources.
 
-PLACEHOLDER. Later this searches the pgvector `passages` table filled by the
+PLACEHOLDER. Later this searches the MongoDB Atlas `passages` collection filled by the
 collectors (Student Rules, Registrar, OAL, Catalog degree plans,
 Transportation static pages). For now it keyword-matches a few canned
 passages so we can watch the agent call it.

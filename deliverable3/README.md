@@ -83,8 +83,8 @@ Claim one piece by assigning yourself to its issue. Each piece takes up to two p
 
 | Piece | What you build | Done when |
 |---|---|---|
-| **Database** | `docker-compose.yml` that starts PostgreSQL with pgvector, plus `pipeline/db/schema.sql` with a `passages` table that has a column for each passage field, plus an `embedding` column we'll fill later. | `docker compose up` starts the database, and the schema loads with no errors. |
-| **Loader** | `pipeline/load.py` reads every `data/processed/*.jsonl` file and inserts the passages, replacing any passage with the same `id`. | Running it twice leaves the same number of rows. It prints a count per source. |
+| **Database** | Core team only (changed Nov 16 from PostgreSQL + pgvector to MongoDB Atlas). `pipeline/db/setup.py` creates the `passages` collection and an Atlas Search index on `title` and `text` in the team's Atlas cluster. An `embedding` field gets filled later. | Running it against the cluster finishes with no errors, and running it again changes nothing. |
+| **Loader** | `pipeline/load.py` reads every `data/processed/*.jsonl` file and inserts the passages into the Atlas `passages` collection, replacing any passage with the same `id`. | Running it twice leaves the same number of documents. It prints a count per source. |
 | **Checker** | `pipeline/check.py <file.jsonl>` checks a processed file against the passage format: required fields, ID format, duplicate IDs, empty or huge `text`, and HTML tags left in. | It catches every problem in a bad file you make up. Track A people can run it on their own output. |
 | **Scorer** | `eval/score.py` runs every question in `eval/questions/` through an answer function and reports how many answers cite the expected `source_url` and how many "not sure" questions were correctly answered "not sure". | It works with a dummy answer function, and it works with your Deliverable 1 agent. |
 

@@ -30,13 +30,15 @@ These follow patterns from Google Cloud's [agent design patterns guide](https://
 
 | Group | Tool | Gets data from | Source |
 |---|---|---|---|
-| `policy_tools` | `search_policies(query, source)` | Our database (pgvector), filled by the collectors | Student Rules, Registrar, Technology Services, Catalog degree plans, Transportation pages |
+| `policy_tools` | `search_policies(query, source)` | Our database (MongoDB Atlas), filled by the collectors | Student Rules, Registrar, Technology Services, Catalog degree plans, Transportation pages |
 | `course_tools` | `get_course(code)` | Live: Catalog course-search API | catalog.tamu.edu |
 | `course_tools` | `get_grades(dept, number, prof)` | Live: anex JSON feed | anex.us |
 | `campus_tools` | `get_bus_routes(place)` | Live: AggieSpirit JSON | aggiespirit.ts.tamu.edu |
 | `campus_tools` | `get_garage_counts()` | Live: Transportation homepage | transport.tamu.edu |
 
-Not included yet: RateMyProfessors and Reddit (terms under review), Libraries (not mapped yet).
+Not included yet: RateMyProfessors and Reddit (terms under review), Libraries (mapped, no collector yet).
+
+The database holds only the document sources. Course, grade, and bus data stay live, so we don't store or refresh them. The database is a free MongoDB Atlas cluster that PMs and the core team manage. `search_policies` starts with Atlas Search (keyword) and adds Atlas Vector Search once passages have embeddings. Atlas replaced PostgreSQL + pgvector on Nov 16; see [`DELIVERABLES.md`](DELIVERABLES.md) for why.
 
 ## One format for everything
 
@@ -45,8 +47,8 @@ Every tool returns a list of **passages**, the same format the collectors write 
 ## Data flow
 
 ```
-collectors ─► data/raw/ ─► data/processed/*.jsonl ─► check.py ─► load.py ─► Postgres + pgvector ─► search_policies
-live sites (anex, catalog API, AggieSpirit, garages) ──────────────────────────────────────────► course/campus tools
+collectors ─► data/raw/ ─► data/processed/*.jsonl ─► check.py ─► load.py ─► MongoDB Atlas ─► search_policies
+live sites (anex, catalog API, AggieSpirit, garages) ────────────────────────────────────► course/campus tools
 ```
 
 ## Files
