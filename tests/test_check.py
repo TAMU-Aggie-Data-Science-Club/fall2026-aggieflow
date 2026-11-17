@@ -115,6 +115,10 @@ def test_comparisons_and_ampersands_are_not_html():
     assert errors_for(text=WORDS_200 + " If x < 5 and y > 3, Texas A&M applies.") == []
 
 
+def test_ampersand_before_semicolon_is_not_an_entity():
+    assert errors_for(text=WORDS_200 + " Taught at Texas A&M; covers M&A; and more.") == []
+
+
 @pytest.mark.parametrize("url", ["student-rules.tamu.edu/rule07/", "ftp://tamu.edu/x",
                                  "https://student rules.tamu.edu", "https://localhost/x"])
 def test_bad_source_url(url):

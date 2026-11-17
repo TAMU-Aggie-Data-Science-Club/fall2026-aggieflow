@@ -14,6 +14,7 @@ worth a look but are allowed (a short rule section, a file with an odd name).
 Standard library only.
 """
 
+import html
 import json
 import re
 import sys
@@ -81,7 +82,10 @@ def check_passage(p):
         tag = HTML_TAG.search(p[f])
         if tag:
             errors.append(f"{f} still has HTML: {tag.group(0)[:40]!r}")
-        entity = HTML_ENTITY.search(p[f])
+        # Only real entities count: "Texas A&M;" matches the pattern but
+        # html.unescape leaves it alone, so it is ordinary text.
+        entity = next((m for m in HTML_ENTITY.finditer(p[f])
+                       if html.unescape(m.group(0)) != m.group(0)), None)
         if entity:
             errors.append(f"{f} still has an HTML entity: {entity.group(0)!r}")
 
