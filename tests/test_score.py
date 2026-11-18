@@ -10,10 +10,12 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -349,17 +351,19 @@ class RealAgentTest(unittest.TestCase):
                 return self.replies.pop(0)
 
         def search(query):
-            return AIMessage("", tool_calls=[{"name": "search_policies", "args": {"query": query},
+            return AIMessage("", tool_calls=[{"name": "search_student_rules", "args": {"query": query},
                                               "id": "1", "type": "tool_call"}])
 
         scripts = {
             "how many q drops do i get": [search("q-drop"), AIMessage(f"Four ({RULE01}).")],
             "how much is a parking permit": [search("parking permit"), AIMessage("It is $100.")],
         }
-        counts = score.score(
-            [QUESTIONS[0], QUESTIONS[2]],
-            lambda q: answer(q, graph=build_graph(ScriptedModel(scripts[q]))),
-        )
+        fixtures = ROOT / "tests" / "fixtures" / "processed"
+        with mock.patch.dict(os.environ, {"AGGIEFLOW_DATA_DIR": str(fixtures)}):
+            counts = score.score(
+                [QUESTIONS[0], QUESTIONS[2]],
+                lambda q: answer(q, graph=build_graph(ScriptedModel(scripts[q]))),
+            )
         self.assertEqual(counts, {"answerable": 1, "cited": 1, "not_sure_questions": 1,
                                   "not_sure_correct": 1, "wrongly_not_sure": 0, "errors": 0})
 
