@@ -71,14 +71,24 @@ def passages_collection():
 
 
 def _atlas_search(source: str, query: str, k: int) -> list[Passage]:
-    """Atlas Search in one source: title matches count double, like the file search."""
+    """Atlas Search in one source.
+
+    Question words (how, many, i, can, my...) are dropped first: Lucene's English
+    stopword list keeps them, and they made broad table-of-contents passages
+    outrank the right rule. Title and text count equally; boosting titles
+    scored worse on the eval questions (Nov 18: 37/45 in the top 5 vs 34/45
+    with titles x2, the same as the file search).
+    """
+    terms = " ".join(_words(query))
+    if not terms:
+        return []
     stage = {
         "index": SEARCH_INDEX,
         "compound": {
             "filter": [{"equals": {"path": "source", "value": source}}],
             "should": [
-                {"text": {"query": query, "path": "title", "score": {"boost": {"value": 2}}}},
-                {"text": {"query": query, "path": "text"}},
+                {"text": {"query": terms, "path": "title"}},
+                {"text": {"query": terms, "path": "text"}},
             ],
             "minimumShouldMatch": 1,
         },
