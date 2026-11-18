@@ -16,9 +16,16 @@ courses. So this script:
      their grades semester by semester.
 
 Run from the repo root:
-    python pipeline/collect/anex.py              # every course, a couple of hours
+    python pipeline/collect/anex.py              # every course, about three hours
     python pipeline/collect/anex.py --limit 20   # first 20 courses, for testing
+    python pipeline/collect/anex.py --resume     # continue a run that stopped
     python pipeline/collect/anex.py --from-raw   # re-parse saved files, no requests
+
+anex.us sometimes stops answering for a while if it gets many requests in a
+row. When that happens the script waits and retries for up to about 20
+minutes, then skips that course. If several courses in a row fail, it stops
+and tells you to run it again later with --resume, which keeps every course
+already fetched.
 
 Writes:
     data/raw/anex/catalog/<page>.html     catalog pages used for the course list
@@ -46,8 +53,11 @@ PAGE_URL = "https://anex.us/grades/?dept={dept}&number={number}"
 CATALOG_INDEX = "https://catalog.tamu.edu/undergraduate/course-descriptions/"
 CATALOG_BASE = "https://catalog.tamu.edu"
 USER_AGENT = "AggieFlowCollector/0.1 (TAMU Aggie Data Science Club student project)"
-DELAY_SECONDS = 1  # team rule: at least 1 second between requests
-RETRIES = 3
+DELAY_SECONDS = 2  # team rule is at least 1 second; anex.us cut us off at 1
+# After a failed request, wait this many seconds before each retry.
+RETRY_WAITS = [30, 60, 120, 300, 600]
+# Stop the run after this many courses in a row fail every retry.
+MAX_FAILED_IN_A_ROW = 3
 
 # Only professors who taught the course in this year or later get their own
 # passage. Older professors still count toward the course summary.
@@ -83,20 +93,22 @@ class Fetcher:
         self.last = 0.0
 
     def request(self, method, url, **kwargs):
-        for attempt in range(1, RETRIES + 1):
+        for attempt in range(len(RETRY_WAITS) + 1):
             wait = DELAY_SECONDS - (time.monotonic() - self.last)
             if wait > 0:
                 time.sleep(wait)
             self.last = time.monotonic()
             try:
-                resp = self.session.request(method, url, timeout=60, **kwargs)
+                resp = self.session.request(method, url, timeout=30, **kwargs)
                 resp.raise_for_status()
                 return resp.text
             except requests.RequestException as err:
-                if attempt == RETRIES:
+                if attempt == len(RETRY_WAITS):
                     raise
-                print(f"  retrying {url} ({err})", file=sys.stderr)
-                time.sleep(5 * attempt)
+                pause = RETRY_WAITS[attempt]
+                print(f"  {url} failed ({type(err).__name__}); waiting {pause}s before retrying",
+                      file=sys.stderr)
+                time.sleep(pause)
 
 
 def subject_pages(index_html):
@@ -156,13 +168,33 @@ def raw_grades_path(dept, number):
 
 
 def fetch_grades(fetcher, courses):
+    """Fetch each course not already saved. Returns True if every course was
+    fetched, False if the run stopped early because anex.us stopped answering."""
     GRADES_RAW.mkdir(parents=True, exist_ok=True)
-    for i, (dept, number) in enumerate(courses, start=1):
-        # The feed needs an uppercase department and only accepts POST.
-        body = fetcher.request("POST", FEED_URL, data={"dept": dept.upper(), "number": number})
+    todo = [c for c in courses if not raw_grades_path(*c).exists()]
+    if len(todo) < len(courses):
+        print(f"  {len(courses) - len(todo)} courses already saved, {len(todo)} to go")
+    failed_in_a_row, skipped = 0, []
+    for i, (dept, number) in enumerate(todo, start=1):
+        try:
+            # The feed needs an uppercase department and only accepts POST.
+            body = fetcher.request("POST", FEED_URL, data={"dept": dept.upper(), "number": number})
+        except requests.RequestException:
+            skipped.append(f"{dept} {number}")
+            failed_in_a_row += 1
+            print(f"  skipped {dept} {number} after every retry failed", file=sys.stderr)
+            if failed_in_a_row >= MAX_FAILED_IN_A_ROW:
+                print(f"\nanex.us stopped answering. {i - len(skipped)} of {len(todo)} courses "
+                      "fetched this run and saved. Try again later with --resume.", file=sys.stderr)
+                return False
+            continue
+        failed_in_a_row = 0
         raw_grades_path(dept, number).write_text(body, encoding="utf-8")
         if i % 100 == 0:
-            print(f"  anex: {i}/{len(courses)} courses fetched")
+            print(f"  anex: {i}/{len(todo)} courses fetched")
+    if skipped:
+        print(f"  {plural(len(skipped), 'course')} skipped; run with --resume to retry: {', '.join(skipped)}")
+    return not skipped
 
 
 # --- Turning numbers into passages ----------------------------------------
@@ -368,26 +400,34 @@ def write_passages(passages):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--limit", type=int, help="only fetch the first N courses")
+    parser.add_argument("--resume", action="store_true",
+                        help="keep saved files and fetch only the courses still missing")
     parser.add_argument("--from-raw", action="store_true", help="re-parse saved files, no requests")
     args = parser.parse_args()
 
+    stamp = RAW_DIR / "fetched_at.txt"
+    complete = True
     if args.from_raw:
         courses = course_list_from_raw()
-        stamp = RAW_DIR / "fetched_at.txt"
         fetched_at = stamp.read_text().strip() if stamp.exists() else now_utc()
     else:
-        if RAW_DIR.exists():
-            shutil.rmtree(RAW_DIR)
-        RAW_DIR.mkdir(parents=True)
-        fetched_at = now_utc()
-        (RAW_DIR / "fetched_at.txt").write_text(fetched_at)
         fetcher = Fetcher()
-        print("Reading the course list from the catalog...")
-        courses = fetch_course_list(fetcher)
+        if args.resume and stamp.exists() and (CATALOG_RAW / "index.html").exists():
+            courses = course_list_from_raw()
+            fetched_at = stamp.read_text().strip()
+            print(f"Resuming the run started {fetched_at} ({len(courses)} courses in the list)")
+        else:
+            if RAW_DIR.exists():
+                shutil.rmtree(RAW_DIR)
+            RAW_DIR.mkdir(parents=True)
+            fetched_at = now_utc()
+            stamp.write_text(fetched_at)
+            print("Reading the course list from the catalog...")
+            courses = fetch_course_list(fetcher)
         if args.limit:
             courses = courses[: args.limit]
         print(f"Fetching grades for {len(courses)} courses from anex.us...")
-        fetch_grades(fetcher, courses)
+        complete = fetch_grades(fetcher, courses)
     if args.limit:
         courses = courses[: args.limit]
 
@@ -402,6 +442,9 @@ def main():
         print("Three random passages:")
         for p in random.sample(passages, min(3, len(passages))):
             print(f"  {p['id']}  {p['title']}  ({words(p['text'])} words)")
+    if not complete:
+        print("\nNot finished: some courses are missing. Run again with --resume.")
+        return 1
     return 0
 
 
