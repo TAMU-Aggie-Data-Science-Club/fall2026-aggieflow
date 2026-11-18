@@ -4,5 +4,5 @@ langchain-groq>=1.1,<2
 python-dotenv>=1.2
 pymongo>=4.9,<5
 requests>=2.32,<3          # live anex.us grades, and the collectors
-beautifulsoup4>=4.12,<5    # the collectors' HTML parsing (anex grades reuse it)
+beautifulsoup4>=4.12,<5    # the collectors' HTML parsing
 pytest>=9

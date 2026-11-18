@@ -45,7 +45,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
 
 SOURCE = "anex"
 FEED_URL = "https://anex.us/grades/getData/"
@@ -113,6 +112,8 @@ class Fetcher:
 
 def subject_pages(index_html):
     """Links to each subject's course list, like .../course-descriptions/csce/."""
+    from bs4 import BeautifulSoup  # only the course list needs it; the agent's live grades don't
+
     soup = BeautifulSoup(index_html, "html.parser")
     paths = []
     for a in soup.select('a[href*="/undergraduate/course-descriptions/"]'):
@@ -124,6 +125,8 @@ def subject_pages(index_html):
 
 def courses_on_page(subject_html):
     """Course codes on one subject page, as (DEPT, NUMBER) pairs."""
+    from bs4 import BeautifulSoup
+
     soup = BeautifulSoup(subject_html, "html.parser")
     found = []
     for title in soup.select(".courseblocktitle"):
