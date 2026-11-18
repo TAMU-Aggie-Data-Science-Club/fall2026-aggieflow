@@ -5,14 +5,19 @@ Run from the repo root (needs MONGODB_URI in .env):
 
 Creates, if they don't exist yet:
 - the `passages` collection (one document per passage, the Deliverable 3
-  passage format; `embedding` gets added later)
+  passage format)
 - a unique index on `id`, so the loader can replace a passage by its id and
   the agent can look courses up by id
 - the Atlas Search index `passages_search` on `title` and `text`, with
-  `source` and `id` as filters, used by the agent's search tools
+  `source` and `id` as filters, used by the agent's keyword search
+- the Vector Search index `passages_vector`: Atlas embeds each passage's
+  `text` itself with Voyage AI's voyage-4 (Automated Embedding), used by the
+  agent's vector and hybrid search. Building it embeds every passage, about
+  7M tokens of the organization's 200M free ones; re-embedding happens only
+  when a passage's text changes or the definition below changes.
 
-Running it again changes nothing, unless the search index definition below
-was edited, in which case the index is updated.
+Running it again changes nothing, unless an index definition below was
+edited, in which case that index is updated.
 """
 
 import os
@@ -24,6 +29,7 @@ from dotenv import load_dotenv
 COLLECTION = "passages"
 DEFAULT_DB = "aggieflow"
 SEARCH_INDEX = "passages_search"
+VECTOR_INDEX = "passages_vector"
 
 # Keyword search on title and text (English stemming, so "drops" finds
 # "drop"). `source` limits a search to one source; `id` lets search skip
@@ -38,6 +44,17 @@ SEARCH_DEFINITION = {
             "id": {"type": "string", "analyzer": "lucene.keyword"},
         },
     }
+}
+
+# Semantic search: Atlas embeds `text` and each question with voyage-4.
+# 512 dimensions keeps the vectors small on the free M0 cluster.
+# `source` limits a search to one source.
+VECTOR_DEFINITION = {
+    "fields": [
+        {"type": "autoEmbed", "modality": "text", "path": "text",
+         "model": "voyage-4", "numDimensions": 512},
+        {"type": "filter", "path": "source"},
+    ]
 }
 
 
@@ -55,31 +72,32 @@ def ensure_id_index(collection):
     print(f"index {name}: ready")
 
 
-def ensure_search_index(collection, wait_seconds=120):
+def ensure_index(collection, name, kind, definition, key, wait_seconds=120):
+    """Create or update one Atlas Search ("search") or Vector Search
+    ("vectorSearch") index. `key` is the part of the definition Atlas echoes
+    back, used to tell whether it changed."""
     from pymongo.operations import SearchIndexModel
 
     existing = {i["name"]: i for i in collection.list_search_indexes()}
-    current = existing.get(SEARCH_INDEX)
+    current = existing.get(name)
     if current is None:
-        collection.create_search_index(
-            SearchIndexModel(definition=SEARCH_DEFINITION, name=SEARCH_INDEX)
-        )
-        print(f"search index {SEARCH_INDEX}: created")
-    elif current.get("latestDefinition", {}).get("mappings") != SEARCH_DEFINITION["mappings"]:
-        collection.update_search_index(SEARCH_INDEX, SEARCH_DEFINITION)
-        print(f"search index {SEARCH_INDEX}: definition changed, updated")
+        collection.create_search_index(SearchIndexModel(definition=definition, name=name, type=kind))
+        print(f"index {name}: created")
+    elif current.get("latestDefinition", {}).get(key) != definition[key]:
+        collection.update_search_index(name, definition)
+        print(f"index {name}: definition changed, updated")
     else:
-        print(f"search index {SEARCH_INDEX}: already up to date")
+        print(f"index {name}: already up to date")
 
-    # Atlas builds search indexes in the background. Wait a little so the
-    # status printed is useful; searches work once it says READY.
+    # Atlas builds these in the background (the vector index also embeds every
+    # passage, which takes longer). Searches work once it says READY.
     deadline = time.monotonic() + wait_seconds
     while True:
-        status = next(iter(collection.list_search_indexes(SEARCH_INDEX)), {}).get("status", "?")
+        status = next(iter(collection.list_search_indexes(name)), {}).get("status", "?")
         if status == "READY" or time.monotonic() > deadline:
             break
         time.sleep(5)
-    print(f"search index {SEARCH_INDEX}: {status}")
+    print(f"index {name}: {status}")
 
 
 def main():
@@ -97,7 +115,8 @@ def main():
         print(f"connected, database {db_name}")
         collection = ensure_collection(client[db_name])
         ensure_id_index(collection)
-        ensure_search_index(collection)
+        ensure_index(collection, SEARCH_INDEX, "search", SEARCH_DEFINITION, "mappings")
+        ensure_index(collection, VECTOR_INDEX, "vectorSearch", VECTOR_DEFINITION, "fields")
     return 0
 
 
