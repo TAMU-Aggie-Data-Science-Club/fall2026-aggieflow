@@ -10,7 +10,9 @@ on:
       - "pipeline/**"
       - "eval/**"
       - "tests/**"
-      - "requirements.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
       - ".github/workflows/tests.yml"
   push:
     branches: [main]
@@ -19,7 +21,9 @@ on:
       - "pipeline/**"
       - "eval/**"
       - "tests/**"
-      - "requirements.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
       - ".github/workflows/tests.yml"
 
 permissions:
@@ -33,13 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.14"
-          cache: pip
+          enable-cache: true
 
+      # --locked fails if pyproject.toml changed without updating uv.lock.
       - name: Install
-        run: pip install -r requirements.txt
+        run: uv sync --locked
 
       - name: Run tests
-        run: python -m pytest -q
+        run: uv run --locked pytest -q

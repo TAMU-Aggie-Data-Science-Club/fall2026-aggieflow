@@ -1,6 +1,6 @@
 """Offline tests for pipeline/check.py, the passage-format checker.
 
-Run from the repo root:  python -m pytest tests
+Run from the repo root:  uv run pytest
 """
 
 import importlib.util

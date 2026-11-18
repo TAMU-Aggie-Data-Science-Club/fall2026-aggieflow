@@ -154,7 +154,7 @@ def main(argv=None):
         from pymongo import MongoClient
     except ImportError:
         print(
-            "Loader error: pymongo is required (pip install -r requirements.txt)",
+            "Loader error: pymongo is required (run uv sync)",
             file=sys.stderr,
         )
         return 1

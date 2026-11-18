@@ -4,7 +4,7 @@
     python -m agent.run --file eval/questions/student-rules-rushilsagar.jsonl
 
 Needs GROQ_API_KEY in your environment or in a .env file at the repo root.
-Set AGGIEFLOW_MODEL to try another model (default: groq:openai/gpt-oss-20b).
+Set AGGIEFLOW_MODEL to try another model (default: groq:openai/gpt-oss-20b, temperature 0).
 """
 
 import argparse

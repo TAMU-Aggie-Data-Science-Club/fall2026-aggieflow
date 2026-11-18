@@ -70,15 +70,20 @@ anex.us feed (live, cached a day) ───────────────�
 ## Run it
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # then add your GROQ_API_KEY
-python pipeline/collect/student-rules.py   # and the other collectors, to fill data/processed/
-python -m agent.run "when's q drop"
-python -m pytest tests
+# once: install uv (https://docs.astral.sh/uv/), e.g. `brew install uv` or
+# `curl -LsSf https://astral.sh/uv/install.sh | sh`
+uv sync                # Python 3.14 and the exact package versions in uv.lock, in .venv/
+cp .env.example .env   # then add your GROQ_API_KEY (and MONGODB_URI for Atlas)
+uv run python -m agent.run "when's q drop"
+uv run pytest
+uv run python eval/score.py
 ```
 
-The default model is `groq:openai/gpt-oss-20b`. Set `AGGIEFLOW_MODEL` to try another one.
+Everyone gets the same environment: `uv sync` installs the Python version in `.python-version` and the exact versions in `uv.lock`. To add or change a package, run `uv add <package>` (it updates `pyproject.toml` and `uv.lock`) and commit both; CI fails if they don't match.
+
+The default model is `groq:openai/gpt-oss-20b`, at temperature 0 so the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
+
+Without `MONGODB_URI`, the tools read the collectors' files instead: run `uv run python pipeline/collect/student-rules.py` (and the other collectors) to fill `data/processed/`.
 
 ## Adding a tool
 

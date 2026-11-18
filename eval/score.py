@@ -20,6 +20,8 @@ agent's packages installed.
 import argparse
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -157,6 +159,30 @@ def report_line(name: str, c: dict) -> str:
             f"wrongly not sure {c['wrongly_not_sure']}, errors {c['errors']}")
 
 
+def run_setup() -> str:
+    """One line saying what this run used, so two scores can be compared:
+    the model, where passages came from, how Atlas searched, and the commit."""
+    from dotenv import load_dotenv
+
+    from agent import data
+    from agent.graph import TEMPERATURE, model_name
+
+    load_dotenv(ROOT / ".env")
+    if data.use_atlas():
+        passages = f"Atlas ({os.environ.get('MONGODB_DB', 'aggieflow')}), {data.search_mode()} search"
+    else:
+        passages = f"local files ({data.data_dir()}), keyword search"
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
+                               capture_output=True, text=True, check=True).stdout.strip()
+        commit += " + uncommitted changes" if dirty else ""
+    except (OSError, subprocess.CalledProcessError):
+        commit = "unknown"
+    return f"setup: {model_name()} at temperature {TEMPERATURE}; {passages}; commit {commit}"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     agent_choice = parser.add_mutually_exclusive_group()
@@ -181,6 +207,8 @@ def main(argv=None) -> int:
         except Exception as err:
             print(f"Could not load {args.d1}: {type(err).__name__}: {err}", file=sys.stderr)
             return 1
+    if answer_fn is agent_answer:
+        print(run_setup())
     total = dict.fromkeys(COUNTS, 0)
     for path in files:
         counts = score(load_questions(path), answer_fn)
