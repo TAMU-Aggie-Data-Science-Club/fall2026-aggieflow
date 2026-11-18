@@ -1,0 +1,45 @@
+name: Tests
+
+# Runs the offline tests (no API keys, no Atlas, no network) when a PR or push
+# changes code. Docs-only changes skip it.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "pipeline/**"
+      - "eval/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "pipeline/**"
+      - "eval/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
