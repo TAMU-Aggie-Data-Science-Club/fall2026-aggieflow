@@ -1,8 +1,10 @@
 """Checks that run in code after the model answers. No model calls here.
 
 1. No sources gathered -> "I'm not sure".
-2. Any link in the answer that no tool returned is removed.
-3. A "Sources:" list is added. Live data says when it was fetched.
+2. The model said it's not sure and cited nothing -> "I'm not sure", with no
+   sources (it didn't use the passages it was given, so they aren't citations).
+3. Any link in the answer that no tool returned is removed.
+4. A "Sources:" list is added. Live data says when it was fetched.
 """
 
 import re
@@ -42,6 +44,9 @@ def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
         return "[link removed: not from a source]"
 
     text = URL.sub(keep_or_drop, answer).strip()
+
+    if not cited and "not sure" in text.lower():
+        return NOT_SURE, []
 
     # If the model cited nothing, list everything it was given.
     urls = cited or list(by_url)

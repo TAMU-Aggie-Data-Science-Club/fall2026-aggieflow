@@ -61,6 +61,17 @@ def test_uncited_answer_still_lists_sources():
     assert cited == [RULE]
 
 
+def test_model_not_sure_lists_no_sources():
+    text, cited = finalize("I’m not sure. (No relevant information was found.)", [RULE])
+    assert text == NOT_SURE and cited == []
+
+
+def test_hedged_answer_that_cites_a_source_is_kept():
+    answer = f"Not sure about summer, but in fall you get four ({RULE['source_url']})."
+    text, cited = finalize(answer, [RULE])
+    assert text.startswith("Not sure about summer") and cited == [RULE]
+
+
 # --- graph ----------------------------------------------------------------
 
 def test_groups_run_in_one_round_and_answer_cites_them():
@@ -108,8 +119,8 @@ def test_round_limit_falls_back_when_model_errors():
 
     result = answer("how many q drops", graph=build_graph(Stubborn()))
     assert len(result["trace"]) == 4  # stopped at MAX_ROUNDS
-    assert result["answer"].startswith("I'm not sure.")
-    assert "rule01" in result["answer"]  # still shows what it found
+    assert result["answer"] == NOT_SURE
+    assert result["sources"] == []  # what it searched isn't cited when it gives up
 
 
 def test_unknown_tool_is_reported_not_crashed():
