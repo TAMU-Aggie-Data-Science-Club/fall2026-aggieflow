@@ -1,12 +1,25 @@
-"""Point the agent's tools at small sample passages in tests/fixtures/processed."""
+"""Point the agent's tools at small sample data, so tests need no network.
+
+- Searches and course lookups read tests/fixtures/processed/<source>.jsonl.
+- anex.us grades, normally fetched live, come from tests/fixtures/anex/<DEPT>-<NUM>.json.
+"""
 
 from pathlib import Path
 
 import pytest
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "processed"
+from agent import data
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def _fake_anex(dept, number):
+    path = FIXTURES / "anex" / f"{dept}-{number}.json"
+    return path.read_text(encoding="utf-8") if path.exists() else '{"classes":]}'
 
 
 @pytest.fixture(autouse=True)
 def sample_data(monkeypatch):
-    monkeypatch.setenv("AGGIEFLOW_DATA_DIR", str(FIXTURES))
+    monkeypatch.setenv("AGGIEFLOW_DATA_DIR", str(FIXTURES / "processed"))
+    monkeypatch.setattr(data, "_fetch_anex", _fake_anex)
+    data._anex_cache.clear()

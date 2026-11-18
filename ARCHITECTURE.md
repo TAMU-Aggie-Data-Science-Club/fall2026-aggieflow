@@ -36,12 +36,12 @@ Each tool does one job, and every passage is reachable through exactly one tool,
 | `policy_tools` | `search_tech_help(query)` | Wi-Fi, VPN, accounts, software, printing, IT policy | `oal.jsonl` |
 | `policy_tools` | `search_degree_plans(query)` | Degree plans, program requirements, core curriculum, catalog policies | `catalog.jsonl` (all pages except individual courses) |
 | `course_tools` | `get_course(course)` | One course's title, hours, description, prerequisites | `catalog.jsonl` course pages |
-| `course_tools` | `get_course_grades(course)` | A course's grade distribution and professors ranked by GPA | `anex.jsonl` course summary |
-| `course_tools` | `get_professor_grades(course, professor)` | One professor's grade history in one course | `anex.jsonl` professor passages |
+| `course_tools` | `get_course_grades(course)` | A course's grade distribution and professors ranked by GPA | Live: anex.us feed |
+| `course_tools` | `get_professor_grades(course, professor)` | One professor's grade history in one course | Live: anex.us feed |
 
 Course tools take a code like `"CSCE 121"`. Search is keyword ranking (BM25) in plain Python for now; Atlas Search and Vector Search replace it inside `agent/data.py`.
 
-Not included yet: Transportation (#36, becomes `search_transportation`), live bus and garage data, RateMyProfessors and Reddit (terms under review), Libraries (mapped, no collector yet). Grades come from the collected anex file, not live calls, because anex.us rate-limits requests.
+Not included yet: Transportation (#36, becomes `search_transportation`), live bus and garage data, RateMyProfessors and Reddit (terms under review), Libraries (mapped, no collector yet). Grades are fetched live from anex.us when a question needs them, not stored: one request at a time, at least a second apart, and each course is cached for a day (grades change about three times a year). The passage text comes from the anex collector's own code, so it matches what the eval answers were written from.
 
 ## One format for everything
 
@@ -52,6 +52,7 @@ Every tool returns a list of **passages**, the same format the collectors write 
 ```
 collectors ─► data/raw/ ─► data/processed/*.jsonl ─► agent/data.py ─► policy and course tools
                                      └─► check.py ─► load.py ─► MongoDB Atlas   (next: agent/data.py reads from here)
+anex.us feed (live, cached a day) ───────────────► agent/data.py ─► grade tools
 ```
 
 ## Files
