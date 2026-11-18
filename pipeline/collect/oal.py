@@ -322,6 +322,15 @@ def chunk_sections(
         if buf:
             raw_chunks.append((sec_title, " ".join(buf)))
 
+    # A "sentence" with no periods (a long list of links, say) can still be
+    # over the limit; cut those by word count so no passage is too long.
+    capped: list[tuple[str, str]] = []
+    for title, text in raw_chunks:
+        words = text.split()
+        for start in range(0, len(words), max_words):
+            capped.append((title, " ".join(words[start:start + max_words])))
+    raw_chunks = capped
+
     merged: list[tuple[str, str]] = []
     for title, text in raw_chunks:
         if not merged:
@@ -407,6 +416,11 @@ def main():
                     if link not in queued_or_visited:
                         queued_or_visited.add(link)
                         queue.append(link)
+
+            # The site map is only a list of links: use it to find pages (above),
+            # but don't make passages from it.
+            if (norm_final or url).rstrip("/").endswith("/sitemap.html"):
+                continue
 
             # Parse, clean, and chunk
             page_title, sections = extract_sections(resp.text)
