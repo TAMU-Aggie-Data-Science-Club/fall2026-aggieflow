@@ -1,12 +1,14 @@
 """Where the tools get their passages.
 
-Searches and course lookups read the collectors' output,
-data/processed/<source>.jsonl, into memory the first time a tool needs it.
-When MongoDB Atlas is ready, only this file changes: the tools keep calling
-search() and course() and keep getting passages back. Grades come live from
-anex.us (see below), not from the database.
+Searches and course lookups read passages from one of two places:
 
-Set AGGIEFLOW_DATA_DIR to read passages from another folder (the tests do).
+- MongoDB Atlas, when MONGODB_URI is set (the `passages` collection, filled by
+  pipeline/load.py; set up by pipeline/db/setup.py).
+- The collectors' files, data/processed/<source>.jsonl, otherwise. Setting
+  AGGIEFLOW_DATA_DIR picks the folder and always uses files (the tests do).
+
+Either way the tools get the same passages back. Grades come live from
+anex.us (see below), not from the database.
 """
 
 import json
@@ -44,6 +46,55 @@ class NoData(Exception):
 
 def data_dir() -> Path:
     return Path(os.environ.get("AGGIEFLOW_DATA_DIR", DEFAULT_DIR))
+
+
+def use_atlas() -> bool:
+    return bool(os.environ.get("MONGODB_URI")) and "AGGIEFLOW_DATA_DIR" not in os.environ
+
+
+# --- MongoDB Atlas ------------------------------------------------------------
+
+SEARCH_INDEX = "passages_search"  # created by pipeline/db/setup.py
+_HIDE = {"_id": 0, "embedding": 0}  # fields the model never needs
+
+
+@lru_cache(maxsize=None)
+def _collection(uri: str, db_name: str):
+    from pymongo import MongoClient
+
+    client = MongoClient(uri, serverSelectionTimeoutMS=5_000, appname="aggieflow-agent")
+    return client[db_name]["passages"]
+
+
+def passages_collection():
+    return _collection(os.environ["MONGODB_URI"], os.environ.get("MONGODB_DB", "aggieflow"))
+
+
+def _atlas_search(source: str, query: str, k: int) -> list[Passage]:
+    """Atlas Search in one source: title matches count double, like the file search."""
+    stage = {
+        "index": SEARCH_INDEX,
+        "compound": {
+            "filter": [{"equals": {"path": "source", "value": source}}],
+            "should": [
+                {"text": {"query": query, "path": "title", "score": {"boost": {"value": 2}}}},
+                {"text": {"query": query, "path": "text"}},
+            ],
+            "minimumShouldMatch": 1,
+        },
+    }
+    if source == "catalog":
+        stage["compound"]["mustNot"] = [
+            {"wildcard": {"path": "id", "query": COURSE_PREFIX + "*", "allowAnalyzedField": True}}
+        ]
+    pipeline = [{"$search": stage}, {"$limit": k}, {"$project": _HIDE}]
+    return list(passages_collection().aggregate(pipeline))
+
+
+def _atlas_course_candidates(dept: str, number: str) -> list[Passage]:
+    """Catalog course pages whose id mentions the code (checked exactly by course())."""
+    pattern = f"^{re.escape(COURSE_PREFIX)}[a-z]+/[a-z0-9-]*{dept.lower()}-{number}[a-z0-9-]*:"
+    return list(passages_collection().find({"id": {"$regex": pattern}}, _HIDE))
 
 
 def _words(text: str) -> list[str]:
@@ -121,6 +172,8 @@ def _index(folder: Path, source: str) -> _Index:
 
 def search(source: str, query: str, k: int = 5) -> list[Passage]:
     """The k passages from one source that best match the query."""
+    if use_atlas():
+        return _atlas_search(source, query, k)
     return _index(data_dir(), source).search(query, k)
 
 
@@ -138,8 +191,9 @@ def course(code: str) -> list[Passage]:
     """Catalog entries for one course (undergraduate and graduate if both exist)."""
     dept, number = parse_course(code)
     want = (dept.lower(), number)
+    candidates = _atlas_course_candidates(dept, number) if use_atlas() else passages("catalog")
     found = []
-    for p in passages("catalog"):
+    for p in candidates:
         if p["id"].startswith(COURSE_PREFIX):
             # 'catalog:course/undergraduate/csce-121-ecen-121:1': cross-listed codes share a page
             key = p["id"].rsplit("/", 1)[-1].split(":")[0]

@@ -1,6 +1,6 @@
 # AggieFlow architecture
 
-How a student's question becomes a cited answer. The tools read the collectors' output in `data/processed/` through `agent/data.py`. When MongoDB Atlas is ready, only `agent/data.py` changes.
+How a student's question becomes a cited answer. The tools get passages through `agent/data.py`: from MongoDB Atlas when `MONGODB_URI` is set (Atlas Search for the search tools), otherwise from the collectors' files in `data/processed/`. Grades are fetched live from anex.us.
 
 ## The agent
 
@@ -51,7 +51,7 @@ Every tool returns a list of **passages**, the same format the collectors write 
 
 ```
 collectors ─► data/raw/ ─► data/processed/*.jsonl ─► agent/data.py ─► policy and course tools
-                                     └─► check.py ─► load.py ─► MongoDB Atlas   (next: agent/data.py reads from here)
+                                     └─► check.py ─► load.py ─► MongoDB Atlas   (agent/data.py reads here when MONGODB_URI is set)
 anex.us feed (live, cached a day) ───────────────► agent/data.py ─► grade tools
 ```
 

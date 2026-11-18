@@ -20,6 +20,6 @@ def _fake_anex(dept, number):
 
 @pytest.fixture(autouse=True)
 def sample_data(monkeypatch):
-    monkeypatch.setenv("AGGIEFLOW_DATA_DIR", str(FIXTURES / "processed"))
+    monkeypatch.setenv("AGGIEFLOW_DATA_DIR", str(FIXTURES / "processed"))  # files, never Atlas
     monkeypatch.setattr(data, "_fetch_anex", _fake_anex)
     data._anex_cache.clear()
