@@ -41,10 +41,18 @@ def normalize(state: State) -> dict:
     return {"messages": [HumanMessage(state["question"])], "rounds": 0, "sources": []}
 
 
+# 0 so the same question gets the same answer, and eval runs can be compared.
+TEMPERATURE = 0
+
+
+def model_name() -> str:
+    return os.environ.get("AGGIEFLOW_MODEL", DEFAULT_MODEL)
+
+
 def default_model():
     from langchain.chat_models import init_chat_model
 
-    return init_chat_model(os.environ.get("AGGIEFLOW_MODEL", DEFAULT_MODEL))
+    return init_chat_model(model_name(), temperature=TEMPERATURE)
 
 
 def make_agent_node(model):

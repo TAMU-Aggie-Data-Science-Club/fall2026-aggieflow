@@ -1,6 +1,6 @@
 """Offline tests for the agent: no API key or network needed.
 
-Run from the repo root:  python -m pytest tests
+Run from the repo root:  uv run pytest
 """
 
 import pytest
