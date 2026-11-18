@@ -1,9 +1,10 @@
 """Where the tools get their passages.
 
-For now this reads the collectors' output, data/processed/<source>.jsonl, into
-memory the first time a tool needs it. When MongoDB Atlas is ready, only this
-file changes: the tools keep calling search(), course() and grades() and keep
-getting passages back.
+Searches and course lookups read the collectors' output,
+data/processed/<source>.jsonl, into memory the first time a tool needs it.
+When MongoDB Atlas is ready, only this file changes: the tools keep calling
+search() and course() and keep getting passages back. Grades come live from
+anex.us (see below), not from the database.
 
 Set AGGIEFLOW_DATA_DIR to read passages from another folder (the tests do).
 """
@@ -12,6 +13,8 @@ import json
 import math
 import os
 import re
+import threading
+import time
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -145,11 +148,70 @@ def course(code: str) -> list[Passage]:
     return found
 
 
+# --- anex.us grades: fetched live ---------------------------------------------
+# anex.us isn't stored in the database. Each course is fetched when a question
+# needs it, turned into passages by the anex collector's own code (so the text
+# matches what the eval answers were written from), and kept for ANEX_CACHE_SECONDS.
+# Requests go one at a time, at least ANEX_GAP_SECONDS apart: anex.us stops
+# answering if it gets many requests in a row.
+
+ANEX_TIMEOUT_SECONDS = 10
+ANEX_CACHE_SECONDS = 24 * 60 * 60  # grades only change about three times a year
+ANEX_GAP_SECONDS = 1.0
+
+_anex_lock = threading.Lock()
+_anex_cache: dict[tuple[str, str], tuple[float, list[Passage]]] = {}
+_anex_last_request = 0.0
+
+
+def _anex_module():
+    from pipeline.collect import anex  # the collector: feed URL, parsing, passage text
+
+    return anex
+
+
+def _fetch_anex(dept: str, number: str) -> str:
+    """The raw feed response for one course. Tests replace this."""
+    import requests
+
+    global _anex_last_request
+    anex = _anex_module()
+    wait = ANEX_GAP_SECONDS - (time.monotonic() - _anex_last_request)
+    if wait > 0:
+        time.sleep(wait)
+    _anex_last_request = time.monotonic()
+    try:
+        resp = requests.post(
+            anex.FEED_URL,
+            data={"dept": dept, "number": number},
+            headers={"User-Agent": anex.USER_AGENT},
+            timeout=ANEX_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as err:
+        raise RuntimeError(f"anex.us didn't answer ({type(err).__name__}); try again later") from err
+    return resp.text
+
+
+def _anex_course(dept: str, number: str) -> list[Passage]:
+    """All anex passages for one course, live. Ids end in ':live'."""
+    key = (dept, number)
+    with _anex_lock:
+        hit = _anex_cache.get(key)
+        if hit and time.monotonic() - hit[0] < ANEX_CACHE_SECONDS:
+            return hit[1]
+        anex = _anex_module()
+        fetched_at = anex.now_utc()
+        made = anex.course_passages(dept, number, anex.load_sections(_fetch_anex(dept, number)), fetched_at)
+        found = [{**p, "id": p["id"] + ":live"} for p in made]
+        _anex_cache[key] = (time.monotonic(), found)
+        return found
+
+
 def grades(code: str) -> list[Passage]:
     """anex.us summary for one course: all professors together, with a ranking."""
     dept, number = parse_course(code)
-    want = f"anex:{dept.lower()}-{number}:1"
-    return [p for p in passages("anex") if p["id"] == want]
+    return [p for p in _anex_course(dept, number) if p["id"] == f"anex:{dept.lower()}-{number}:1:live"]
 
 
 def professor_grades(code: str, professor: str) -> list[Passage]:
@@ -160,11 +222,10 @@ def professor_grades(code: str, professor: str) -> list[Passage]:
     when nobody matches, so the model can try again.
     """
     dept, number = parse_course(code)
-    prefix = f"anex:{dept.lower()}-{number}-"
     marker = " grades with "
     by_prof: dict[str, list[Passage]] = {}
-    for p in passages("anex"):
-        if p["id"].startswith(prefix) and marker in p["title"]:
+    for p in _anex_course(dept, number):
+        if marker in p["title"]:
             by_prof.setdefault(p["title"].split(marker, 1)[1], []).append(p)
     if not by_prof:
         return []
