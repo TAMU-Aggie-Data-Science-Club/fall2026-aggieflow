@@ -7,11 +7,14 @@ Searches and course lookups read passages from one of two places:
 - The collectors' files, data/processed/<source>.jsonl, otherwise. Setting
   AGGIEFLOW_DATA_DIR picks the folder and always uses files (the tests do).
 
+On Atlas, AGGIEFLOW_SEARCH picks keyword (default), vector or hybrid search.
+
 Either way the tools get the same passages back. Grades come live from
 anex.us (see below), not from the database.
 """
 
 import json
+import logging
 import math
 import os
 import re
@@ -22,6 +25,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from agent.state import Passage
+
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DIR = ROOT / "data" / "processed"
@@ -99,6 +104,57 @@ def _atlas_search(source: str, query: str, k: int) -> list[Passage]:
         ]
     pipeline = [{"$search": stage}, {"$limit": k}, {"$project": _HIDE}]
     return list(passages_collection().aggregate(pipeline))
+
+
+VECTOR_INDEX = "passages_vector"  # embeds `text` with voyage-4; see pipeline/db/setup.py
+RRF_K = 60  # standard reciprocal rank fusion constant
+
+
+def _atlas_vector_search(source: str, query: str, k: int) -> list[Passage]:
+    """Semantic search in one source. Atlas embeds the question itself, with
+    the same model that embedded the passages (Automated Embedding).
+
+    The free cluster has a low limit on how many questions Atlas embeds per
+    minute. When Atlas refuses, this falls back to keyword search rather than
+    failing the question.
+    """
+    if not query.strip():
+        return []
+    # Course pages can't be excluded inside a vector filter (no prefix match),
+    # so fetch extra and drop them here.
+    extra = 3 * k if source == "catalog" else k
+    stage = {
+        "index": VECTOR_INDEX,
+        "path": "text",
+        "query": {"text": query},
+        "filter": {"source": {"$eq": source}},
+        "numCandidates": max(100, 20 * extra),
+        "limit": extra,
+    }
+    from pymongo.errors import OperationFailure
+
+    try:
+        found = list(passages_collection().aggregate([{"$vectorSearch": stage}, {"$project": _HIDE}]))
+    except OperationFailure as err:
+        if "rate limit" not in str(err).lower():
+            raise
+        log.warning("Atlas embedding rate limit hit; using keyword search for this query")
+        return _atlas_search(source, query, k)
+    return [p for p in found if not p["id"].startswith(COURSE_PREFIX)][:k]
+
+
+def _atlas_hybrid_search(source: str, query: str, k: int) -> list[Passage]:
+    """Keyword and vector results merged by reciprocal rank fusion: a passage
+    ranked high by either search, or fairly high by both, comes first."""
+    depth = max(2 * k, 10)
+    scores: dict[str, float] = {}
+    by_id: dict[str, Passage] = {}
+    for results in (_atlas_search(source, query, depth), _atlas_vector_search(source, query, depth)):
+        for rank, p in enumerate(results):
+            scores[p["id"]] = scores.get(p["id"], 0.0) + 1.0 / (RRF_K + rank + 1)
+            by_id[p["id"]] = p
+    best = sorted(scores, key=lambda i: -scores[i])[:k]
+    return [by_id[i] for i in best]
 
 
 def _atlas_course_candidates(dept: str, number: str) -> list[Passage]:
@@ -180,10 +236,26 @@ def _index(folder: Path, source: str) -> _Index:
     return _Index(docs)
 
 
+SEARCH_MODES = {
+    "keyword": _atlas_search,
+    "vector": _atlas_vector_search,
+    "hybrid": _atlas_hybrid_search,
+}
+
+
+def search_mode() -> str:
+    """How Atlas searches: AGGIEFLOW_SEARCH = keyword (default), vector or hybrid.
+    The file search is always keyword."""
+    mode = os.environ.get("AGGIEFLOW_SEARCH", "keyword").strip().lower()
+    if mode not in SEARCH_MODES:
+        raise ValueError(f"AGGIEFLOW_SEARCH={mode!r}: use one of {', '.join(SEARCH_MODES)}")
+    return mode
+
+
 def search(source: str, query: str, k: int = 5) -> list[Passage]:
     """The k passages from one source that best match the query."""
     if use_atlas():
-        return _atlas_search(source, query, k)
+        return SEARCH_MODES[search_mode()](source, query, k)
     return _index(data_dir(), source).search(query, k)
 
 

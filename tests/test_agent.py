@@ -3,8 +3,10 @@
 Run from the repo root:  python -m pytest tests
 """
 
+import pytest
 from langchain_core.messages import AIMessage
 
+from agent import data
 from agent.checks import NOT_SURE, finalize
 from agent.graph import build_graph
 from agent.run import answer
@@ -118,3 +120,13 @@ def test_unknown_tool_is_reported_not_crashed():
     result = answer("weather?", graph=build_graph(model))
     assert result["answer"] == NOT_SURE
 
+
+
+def test_search_mode_defaults_to_keyword_and_rejects_unknown(monkeypatch):
+    monkeypatch.delenv("AGGIEFLOW_SEARCH", raising=False)
+    assert data.search_mode() == "keyword"
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", " Hybrid ")
+    assert data.search_mode() == "hybrid"
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", "semantic")
+    with pytest.raises(ValueError, match="keyword, vector, hybrid"):
+        data.search_mode()
