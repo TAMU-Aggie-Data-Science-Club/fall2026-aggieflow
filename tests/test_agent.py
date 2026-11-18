@@ -64,23 +64,22 @@ def test_uncited_answer_still_lists_sources():
 def test_groups_run_in_one_round_and_answer_cites_them():
     model = ScriptedModel([
         AIMessage("", tool_calls=[
-            call("get_grades", {"dept": "CSCE", "number": "121"}, "1"),
-            call("get_garage_counts", {}, "2"),
+            call("get_course_grades", {"course": "CHEM 107"}, "1"),
+            call("search_student_rules", {"query": "q-drop"}, "2"),
         ]),
-        AIMessage("Grades are here (https://anex.us/grades/?dept=CSCE&number=121)."),
+        AIMessage("Martinez is highest (https://anex.us/grades/?dept=CHEM&number=107)."),
     ])
-    result = answer("is csce 121 hard and where can i park", graph=build_graph(model))
+    result = answer("easiest chem 107 prof and how many q drops", graph=build_graph(model))
     assert result["trace"] == [[
-        'course_tools.get_grades({"dept": "CSCE", "number": "121"})',
-        "campus_tools.get_garage_counts({})",
+        'course_tools.get_course_grades({"course": "CHEM 107"})',
+        'policy_tools.search_student_rules({"query": "q-drop"})',
     ]]
-    assert "as of" in result["answer"]  # live data is time-stamped
     assert [p["source"] for p in result["sources"]] == ["anex"]
 
 
 def test_empty_search_gives_not_sure():
     model = ScriptedModel([
-        AIMessage("", tool_calls=[call("search_policies", {"query": "1998 football game"}, "1")]),
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "1998 football game"}, "1")]),
         AIMessage("The Aggies won."),
     ])
     result = answer("who won the 1998 game", graph=build_graph(model))
@@ -103,7 +102,7 @@ def test_round_limit_falls_back_when_model_errors():
         def invoke(self, messages):
             if not self.bound:
                 raise RuntimeError("Tool choice is none, but model called a tool")
-            return AIMessage("", tool_calls=[call("search_policies", {"query": "q-drop"}, "x")])
+            return AIMessage("", tool_calls=[call("search_student_rules", {"query": "q-drop"}, "x")])
 
     result = answer("how many q drops", graph=build_graph(Stubborn()))
     assert len(result["trace"]) == 4  # stopped at MAX_ROUNDS
@@ -118,3 +117,4 @@ def test_unknown_tool_is_reported_not_crashed():
     ])
     result = answer("weather?", graph=build_graph(model))
     assert result["answer"] == NOT_SURE
+

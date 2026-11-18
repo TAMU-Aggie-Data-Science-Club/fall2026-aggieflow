@@ -1,23 +1,23 @@
-"""The AggieFlow agent graph (Option A: one agent, one node per tool group).
+"""The AggieFlow agent graph: one agent and one tool node.
 
-    question -> normalize -> agent -> [policy_tools | course_tools | campus_tools] -> agent ...
-                                   \\-> check -> END
+    question -> normalize -> agent <-> tools
+                               \\-> check -> END
 
-The agent loops until it answers or hits MAX_ROUNDS. When it calls tools from
-more than one group, those group nodes run in parallel.
+The agent loops until it answers or hits MAX_ROUNDS. Every tool call the model
+makes in one turn runs at the same time, whatever group the tool belongs to.
 """
 
 import json
 import os
-import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables.config import get_executor_for_config
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
 
 from agent.checks import finalize
-from agent.state import GroupInput, State
-from agent.tools import ALL_TOOLS, GROUP_OF, GROUPS
+from agent.state import State
+from agent.tools import ALL_TOOLS
 
 DEFAULT_MODEL = "groq:openai/gpt-oss-20b"
 MAX_ROUNDS = 4
@@ -34,21 +34,11 @@ OUT_OF_ROUNDS = (
     "or say you're not sure."
 )
 
-# Aggie shorthand -> the words the sources use (same idea as Deliverable 1).
-ALIASES = {
-    "qdrop": "Q-drop",
-    "q drop": "Q-drop",
-    "wcl": "West Campus Library",
-    "msc": "Memorial Student Center (MSC)",
-    "evans": "Evans Library",
-}
-
-
 def normalize(state: State) -> dict:
-    question = state["question"]
-    for short, full in ALIASES.items():
-        question = re.sub(rf"\b{re.escape(short)}\b", full, question, flags=re.IGNORECASE)
-    return {"messages": [HumanMessage(question)], "rounds": 0, "sources": []}
+    """Start a run: the question becomes the first message, with no rounds or
+    sources yet. The student's words are passed on unchanged; if evals show
+    shorthand (qdrop, wcl) hurting search, expand it inside agent/data.py."""
+    return {"messages": [HumanMessage(state["question"])], "rounds": 0, "sources": []}
 
 
 def default_model():
@@ -81,38 +71,36 @@ def make_agent_node(model):
     return agent
 
 
-def dispatch(state: State):
-    """Send each tool call to its group's node. Groups run in parallel."""
-    last = state["messages"][-1]
-    if not getattr(last, "tool_calls", None):
-        return "check"
-    by_group: dict[str, list[dict]] = {}
-    for call in last.tool_calls:
-        # Unknown tool names go to the first group, which reports the error.
-        group = GROUP_OF.get(call["name"], next(iter(GROUPS)))
-        by_group.setdefault(group, []).append(call)
-    return [Send(group, {"calls": calls}) for group, calls in by_group.items()]
+def route(state: State) -> str:
+    """Run tools if the model asked for any, otherwise finish."""
+    return "tools" if getattr(state["messages"][-1], "tool_calls", None) else "check"
 
 
-def make_group_node(group: str):
-    tools = {t.name: t for t in GROUPS[group]}
+def make_tools_node():
+    tools = {t.name: t for t in ALL_TOOLS}
 
-    def run_group(payload: GroupInput) -> dict:
-        messages, sources = [], []
-        for call in payload["calls"]:
-            tool = tools.get(call["name"])
-            try:
-                if tool is None:
-                    raise ValueError(f"unknown tool {call['name']!r}")
-                passages = tool.invoke(call["args"])
-                sources.extend(passages)
-                content = json.dumps(passages, ensure_ascii=False) if passages else "No results."
-            except Exception as err:  # report errors to the model instead of crashing
-                content = f"Error: {err}"
-            messages.append(ToolMessage(content, tool_call_id=call["id"], name=call["name"]))
-        return {"messages": messages, "sources": sources}
+    def run_one(call: dict) -> tuple[ToolMessage, list]:
+        tool = tools.get(call["name"])
+        try:
+            if tool is None:
+                raise ValueError(f"unknown tool {call['name']!r}")
+            passages = tool.invoke(call["args"])
+            content = json.dumps(passages, ensure_ascii=False) if passages else "No results."
+        except Exception as err:  # report errors to the model instead of crashing
+            passages, content = [], f"Error: {err}"
+        return ToolMessage(content, tool_call_id=call["id"], name=call["name"]), passages
 
-    return run_group
+    def run_tools(state: State, config: RunnableConfig) -> dict:
+        """Run every tool call from the model's last message in parallel."""
+        calls = state["messages"][-1].tool_calls
+        with get_executor_for_config(config) as pool:
+            results = list(pool.map(run_one, calls))  # keeps the calls' order
+        return {
+            "messages": [message for message, _ in results],
+            "sources": [p for _, passages in results for p in passages],
+        }
+
+    return run_tools
 
 
 def check(state: State) -> dict:
@@ -125,13 +113,12 @@ def build_graph(model=None):
     graph = StateGraph(State)
     graph.add_node("normalize", normalize)
     graph.add_node("agent", make_agent_node(model))
-    for group in GROUPS:
-        graph.add_node(group, make_group_node(group), input_schema=GroupInput)
-        graph.add_edge(group, "agent")
+    graph.add_node("tools", make_tools_node())
+    graph.add_edge("tools", "agent")
     graph.add_node("check", check)
 
     graph.add_edge(START, "normalize")
     graph.add_edge("normalize", "agent")
-    graph.add_conditional_edges("agent", dispatch, [*GROUPS, "check"])
+    graph.add_conditional_edges("agent", route, ["tools", "check"])
     graph.add_edge("check", END)
     return graph.compile()
