@@ -30,7 +30,7 @@ def _get_graph():
 
 
 def trace(messages) -> list[list[str]]:
-    """Which tools ran, round by round: [["course_tools.get_grades(...)", ...], ...]."""
+    """Which tools ran, round by round: [["course_tools.get_course_grades(...)", ...], ...]."""
     rounds = []
     for m in messages:
         calls = getattr(m, "tool_calls", None)

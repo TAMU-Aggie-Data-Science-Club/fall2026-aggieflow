@@ -25,14 +25,9 @@ class Passage(TypedDict):
 class State(TypedDict, total=False):
     question: str
     messages: Annotated[list[AnyMessage], add_messages]
-    # Every passage any tool returned. Tool groups can run in parallel,
-    # so this list is merged with + instead of overwritten.
+    # Every passage any tool returned, across all rounds, so it is
+    # merged with + instead of overwritten.
     sources: Annotated[list[Passage], operator.add]
     rounds: int  # how many times the agent has asked for tools
     answer: str
 
-
-class GroupInput(TypedDict):
-    """What the dispatcher sends to one tool-group node."""
-
-    calls: list[dict]
