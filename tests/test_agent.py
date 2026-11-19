@@ -88,6 +88,8 @@ def test_groups_run_in_one_round_and_answer_cites_them():
         'policy_tools.search_student_rules({"query": "q-drop"})',
     ]]
     assert [p["source"] for p in result["sources"]] == ["anex"]
+    # documents keeps everything the tools returned, cited or not, for groundedness judges
+    assert {p["source"] for p in result["documents"]} == {"anex", "student-rules"}
 
 
 def test_empty_search_gives_not_sure():
@@ -141,3 +143,21 @@ def test_search_mode_defaults_to_keyword_and_rejects_unknown(monkeypatch):
     monkeypatch.setenv("AGGIEFLOW_SEARCH", "semantic")
     with pytest.raises(ValueError, match="keyword, vector, hybrid"):
         data.search_mode()
+
+
+# --- eval plumbing ----------------------------------------------------------
+
+def test_answer_tags_the_trace_with_run_and_question_metadata():
+    seen = {}
+
+    class FakeGraph:
+        def invoke(self, inputs, config=None):
+            seen["config"] = config
+            return {"messages": [AIMessage(f"Four ({RULE['source_url']}).")],
+                    "sources": [RULE, RULE], "answer": "Four."}
+
+    result = answer("how many q drops", graph=FakeGraph(), metadata={"question_id": "sr-01"})
+    meta = seen["config"]["metadata"]
+    assert meta["question_id"] == "sr-01"
+    assert {"model", "temperature", "search", "commit"} <= meta.keys()
+    assert result["documents"] == [RULE]  # duplicates dropped
