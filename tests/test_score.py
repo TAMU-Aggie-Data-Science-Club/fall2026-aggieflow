@@ -273,6 +273,17 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue(done.stdout.splitlines()[-1].startswith("TOTAL: "))
 
+    def test_setup_line_works_when_run_as_a_script(self):
+        # As in `python eval/score.py`: eval/ is on the path, the repo root isn't.
+        code = (f"import sys; sys.path[0] = {str(SCORE_PY.parent)!r}; "
+                "import score; print(score.run_setup())")
+        env = {**os.environ, "AGGIEFLOW_DATA_DIR": str(ROOT / "tests" / "fixtures" / "processed")}
+        with tempfile.TemporaryDirectory() as tmp:
+            done = subprocess.run([sys.executable, "-c", code], cwd=tmp, env=env,
+                                  capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(done.stdout.startswith("setup: "), done.stdout)
+
     def test_import_loads_no_agent_packages(self):
         code = (
             "import importlib.util, sys\n"

@@ -69,14 +69,19 @@ def dummy_answer(question: str) -> dict:
     return {"answer": "I'm not sure.", "sources": []}
 
 
+def _add_root_to_path() -> None:
+    """`python eval/score.py` puts eval/ on the path, not the repo root, so `agent` can't be imported."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
 def agent_answer(question: str, question_id: str | None = None) -> dict:
     """The real agent. Imported here, not at the top, so this file loads without
     langgraph, langchain or dotenv. If they are missing, each question counts as
     an error and the message is printed, instead of the whole run stopping.
 
     The question id goes on the LangSmith trace (when tracing is on)."""
-    if str(ROOT) not in sys.path:  # `python eval/score.py` puts eval/ on the path, not the root
-        sys.path.insert(0, str(ROOT))
+    _add_root_to_path()
     from agent.run import answer
 
     return answer(question, metadata={"question_id": question_id} if question_id else None)
@@ -223,6 +228,7 @@ def run_setup() -> str:
     the model, where passages came from, how Atlas searched, and the commit."""
     from dotenv import load_dotenv
 
+    _add_root_to_path()
     from agent import data
     from agent.graph import TEMPERATURE, model_name
     from agent.run import git_commit
