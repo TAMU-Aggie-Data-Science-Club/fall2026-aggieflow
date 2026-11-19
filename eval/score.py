@@ -13,6 +13,8 @@ prints one line per file plus a TOTAL line:
 - wrongly not sure: an answerable question got "not sure"
 - errors: the answer function raised (counted as a miss; the run keeps going)
 
+Questions tagged known-gap (their page isn't collected yet) are skipped.
+
 Standard library only at import time, so --dummy and the tests run without the
 agent's packages installed.
 """
@@ -29,6 +31,18 @@ ROOT = Path(__file__).resolve().parent.parent
 QUESTIONS = ROOT / "eval" / "questions"
 NOT_SURE = "NOT_SURE"
 FIELDS = ("id", "question", "answer", "source_url")
+SETS = ("regression", "capability")
+KNOWN_GAP = "known-gap"  # the expected page isn't collected yet, so the task isn't scored
+
+# Tools a question expects when its line has no "tools" field, by file name prefix
+# (format in eval/README.md). Files with other prefixes, like extra-*, set "tools" on every line.
+DEFAULT_TOOLS = {
+    "student-rules": ["search_student_rules"],
+    "registrar": ["search_registrar"],
+    "oal": ["search_tech_help"],
+    "catalog": ["search_degree_plans", "get_course"],
+    "anex": ["get_course_grades", "get_professor_grades"],
+}
 COUNTS = ("answerable", "cited", "not_sure_questions", "not_sure_correct",
           "wrongly_not_sure", "errors")
 
@@ -105,9 +119,35 @@ def question_files(path: Path) -> list[Path]:
     return []
 
 
+def default_tools(path: Path) -> list[str] | None:
+    """The tools a question in this file expects when its line doesn't say."""
+    for prefix, tools in DEFAULT_TOOLS.items():
+        if path.name.startswith(prefix):
+            return list(tools)
+    return None
+
+
+def _bad_optional_field(q: dict) -> str | None:
+    """Why an optional field (tools, args, set, tags) is malformed, or None."""
+    for key in ("tools", "tags"):
+        if key in q and not (isinstance(q[key], list) and all(isinstance(t, str) for t in q[key])):
+            return f"{key} must be a list of strings"
+    if "args" in q and not isinstance(q["args"], dict):
+        return "args must be an object"
+    if "set" in q and q["set"] not in SETS:
+        return f"set must be one of {', '.join(SETS)}"
+    return None
+
+
+def is_known_gap(q: dict) -> bool:
+    return KNOWN_GAP in q.get("tags", [])
+
+
 def load_questions(path: Path) -> list[dict]:
     """Questions from one file. Bad lines are reported and skipped, not scored:
-    a broken question says nothing about the agent."""
+    a broken question says nothing about the agent.
+
+    A line without "tools" gets the default for its file name (DEFAULT_TOOLS)."""
     questions = []
     with open(path, encoding="utf-8") as f:
         for n, line in enumerate(f, start=1):
@@ -124,6 +164,12 @@ def load_questions(path: Path) -> list[dict]:
             if q["answer"] != NOT_SURE and not isinstance(q["source_url"], str):
                 print(f"{path.name}:{n}: skipped, answerable but source_url is not a URL", file=sys.stderr)
                 continue
+            problem = _bad_optional_field(q)
+            if problem:
+                print(f"{path.name}:{n}: skipped, {problem}", file=sys.stderr)
+                continue
+            if "tools" not in q and (tools := default_tools(path)) is not None:
+                q["tools"] = tools
             questions.append(q)
     return questions
 
@@ -210,7 +256,11 @@ def main(argv=None) -> int:
         print(run_setup())
     total = dict.fromkeys(COUNTS, 0)
     for path in files:
-        counts = score(load_questions(path), answer_fn)
+        questions = load_questions(path)
+        gaps = sum(map(is_known_gap, questions))
+        if gaps:
+            print(f"{path.name}: skipped {gaps} {KNOWN_GAP} question(s)", file=sys.stderr)
+        counts = score([q for q in questions if not is_known_gap(q)], answer_fn)
         print(report_line(path.name, counts))
         for key in COUNTS:
             total[key] += counts[key]
