@@ -21,7 +21,6 @@ import argparse
 import importlib.util
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -53,15 +52,17 @@ def dummy_answer(question: str) -> dict:
     return {"answer": "I'm not sure.", "sources": []}
 
 
-def agent_answer(question: str) -> dict:
+def agent_answer(question: str, question_id: str | None = None) -> dict:
     """The real agent. Imported here, not at the top, so this file loads without
     langgraph, langchain or dotenv. If they are missing, each question counts as
-    an error and the message is printed, instead of the whole run stopping."""
+    an error and the message is printed, instead of the whole run stopping.
+
+    The question id goes on the LangSmith trace (when tracing is on)."""
     if str(ROOT) not in sys.path:  # `python eval/score.py` puts eval/ on the path, not the root
         sys.path.insert(0, str(ROOT))
     from agent.run import answer
 
-    return answer(question)
+    return answer(question, metadata={"question_id": question_id} if question_id else None)
 
 
 def d1_result(text: str) -> dict:
@@ -134,7 +135,10 @@ def score(questions: list[dict], answer_fn) -> dict:
         expects_not_sure = q["answer"] == NOT_SURE
         counts["not_sure_questions" if expects_not_sure else "answerable"] += 1
         try:
-            result = answer_fn(q["question"])
+            if answer_fn is agent_answer:  # only the real agent traces to LangSmith
+                result = answer_fn(q["question"], question_id=q["id"])
+            else:
+                result = answer_fn(q["question"])
             sources = result["sources"]
             cited = {normalize_url(p["source_url"]) for p in sources if p.get("source_url")}
             said_not_sure = "not sure" in result["answer"].lower()
@@ -166,21 +170,16 @@ def run_setup() -> str:
 
     from agent import data
     from agent.graph import TEMPERATURE, model_name
+    from agent.run import git_commit
 
     load_dotenv(ROOT / ".env")
     if data.use_atlas():
         passages = f"Atlas ({os.environ.get('MONGODB_DB', 'aggieflow')}), {data.search_mode()} search"
     else:
         passages = f"local files ({data.data_dir()}), keyword search"
-    try:
-        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
-                                capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
-                               capture_output=True, text=True, check=True).stdout.strip()
-        commit += " + uncommitted changes" if dirty else ""
-    except (OSError, subprocess.CalledProcessError):
-        commit = "unknown"
-    return f"setup: {model_name()} at temperature {TEMPERATURE}; {passages}; commit {commit}"
+    tracing = "on" if os.environ.get("LANGSMITH_TRACING", "").lower() == "true" else "off"
+    return (f"setup: {model_name()} at temperature {TEMPERATURE}; {passages}; "
+            f"commit {git_commit()}; LangSmith tracing {tracing}")
 
 
 def main(argv=None) -> int:

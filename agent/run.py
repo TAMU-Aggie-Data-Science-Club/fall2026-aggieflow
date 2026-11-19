@@ -5,15 +5,20 @@
 
 Needs GROQ_API_KEY in your environment or in a .env file at the repo root.
 Set AGGIEFLOW_MODEL to try another model (default: groq:openai/gpt-oss-20b, temperature 0).
+Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY to send each run to LangSmith (see .env.example).
 """
 
 import argparse
 import json
+import subprocess
 import sys
+from functools import lru_cache
+from pathlib import Path
 
 from agent.checks import finalize
 from agent.tools import GROUP_OF
 
+ROOT = Path(__file__).resolve().parent.parent
 _graph = None
 
 
@@ -42,14 +47,54 @@ def trace(messages) -> list[list[str]]:
     return rounds
 
 
-def answer(question: str, graph=None) -> dict:
-    """Answer one question. This is what the Scorer (#40) calls.
+@lru_cache(maxsize=1)
+def git_commit() -> str:
+    """The short commit hash, plus " + uncommitted changes" if tracked files changed."""
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return commit + (" + uncommitted changes" if dirty else "")
 
-    Returns {"answer": str, "sources": [passages cited], "trace": [...]}.
+
+def run_metadata() -> dict:
+    """What this run used, attached to every LangSmith trace so runs can be filtered and compared."""
+    from agent import data
+    from agent.graph import TEMPERATURE, model_name
+
+    return {
+        "model": model_name(),
+        "temperature": TEMPERATURE,
+        "search": data.search_mode() if data.use_atlas() else "local-keyword",
+        "commit": git_commit(),
+    }
+
+
+def answer(question: str, graph=None, metadata: dict | None = None) -> dict:
+    """Answer one question. This is what the Scorer (#40) and members' evals call.
+
+    metadata is added to the LangSmith trace, e.g. {"question_id": "sr-03"}.
+    The model, temperature, search mode and git commit are always added.
+
+    Returns {
+        "answer": str,
+        "sources": [passages cited in the answer],
+        "documents": [every passage the tools returned, cited or not],
+        "trace": [[tool calls], ...] round by round,
+    }
+    "documents" is what groundedness and retrieval-relevance judges read.
     """
-    state = (graph or _get_graph()).invoke({"question": question})
-    _, cited = finalize(state["messages"][-1].text, state.get("sources", []))
-    return {"answer": state["answer"], "sources": cited, "trace": trace(state["messages"])}
+    graph = graph or _get_graph()
+    config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
+    state = graph.invoke({"question": question}, config=config)
+    retrieved = state.get("sources", [])
+    _, cited = finalize(state["messages"][-1].text, retrieved)
+    documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
+    return {"answer": state["answer"], "sources": cited, "documents": documents,
+            "trace": trace(state["messages"])}
 
 
 def _print(question: str, result: dict) -> None:

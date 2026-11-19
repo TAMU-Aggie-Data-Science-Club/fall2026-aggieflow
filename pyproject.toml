@@ -14,7 +14,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9"]
+dev = [
+    "langsmith[pytest]>=0.4",
+    "pytest>=9",
+]
 
 [tool.uv]
 package = false  # an app, not a library: uv installs its dependencies, not the project itself
@@ -22,3 +25,5 @@ package = false  # an app, not a library: uv installs its dependencies, not the 
 [tool.pytest.ini_options]
 pythonpath = ["."]  # so `uv run pytest` finds agent/ and pipeline/
 testpaths = ["tests"]
+# langsmith's pytest plugin uses an asyncio call Python 3.14 deprecates; not ours to fix.
+filterwarnings = ["ignore::DeprecationWarning:langsmith.*"]

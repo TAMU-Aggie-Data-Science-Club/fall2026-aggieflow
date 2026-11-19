@@ -83,6 +83,12 @@ Everyone gets the same environment: `uv sync` installs the Python version in `.p
 
 The default model is `groq:openai/gpt-oss-20b`, at temperature 0 so the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
 
+### For evals
+
+- `agent.run.answer(question, metadata={"question_id": "..."})` returns `answer`, `sources` (passages cited), `documents` (every passage the tools returned, for groundedness and retrieval judges) and `trace` (tool calls by round).
+- With `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` set (see `.env.example`), every run goes to LangSmith tagged with the model, search mode, commit and your `metadata`. `eval/score.py` adds the question id.
+- `langsmith[pytest]` is installed, so tests can use `@pytest.mark.langsmith`. Set `LANGSMITH_TEST_TRACKING=false` to run them without sending anything.
+
 Without `MONGODB_URI`, the tools read the collectors' files instead: run `uv run python pipeline/collect/student-rules.py` (and the other collectors) to fill `data/processed/`.
 
 ## Adding a tool
