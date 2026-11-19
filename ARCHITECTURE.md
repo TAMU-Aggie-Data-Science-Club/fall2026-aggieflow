@@ -35,13 +35,14 @@ Each tool does one job, and every passage is reachable through exactly one tool,
 | `policy_tools` | `search_registrar(query)` | Registration, academic calendar, deadlines, transcripts, graduation | `registrar.jsonl` |
 | `policy_tools` | `search_tech_help(query)` | Wi-Fi, VPN, accounts, software, printing, IT policy | `oal.jsonl` |
 | `policy_tools` | `search_degree_plans(query)` | Degree plans, program requirements, core curriculum, catalog policies | `catalog.jsonl` (all pages except individual courses) |
+| `policy_tools` | `search_transportation(query)` | Parking permits, lots and citations, AggieSpirit bus service, gameday, bikes and EV charging | `transportation.jsonl` (static pages only) |
 | `course_tools` | `get_course(course)` | One course's title, hours, description, prerequisites | `catalog.jsonl` course pages |
 | `course_tools` | `get_course_grades(course)` | A course's grade distribution and professors ranked by GPA | Live: anex.us feed |
 | `course_tools` | `get_professor_grades(course, professor)` | One professor's grade history in one course | Live: anex.us feed |
 
 Course tools take a code like `"CSCE 121"`. On Atlas, search is keyword (Atlas Search) by default; `AGGIEFLOW_SEARCH=vector` uses Atlas Vector Search, where Atlas embeds passages and questions itself with voyage-4, and `hybrid` merges both by reciprocal rank fusion. Members compare the three with the eval questions before we pick a default. Without Atlas, search is keyword ranking (BM25) in plain Python.
 
-Not included yet: Transportation (#36, becomes `search_transportation`), live bus and garage data, RateMyProfessors and Reddit (terms under review), Libraries (mapped, no collector yet). Grades are fetched live from anex.us when a question needs them, not stored: one request at a time, at least a second apart, and each course is cached for a day (grades change about three times a year). The passage text comes from the anex collector's own code, so it matches what the eval answers were written from.
+Not included yet: live bus times and garage counts (`search_transportation` covers only the static pages), RateMyProfessors and Reddit (terms under review), Libraries (mapped, no collector yet). Grades are fetched live from anex.us when a question needs them, not stored: one request at a time, at least a second apart, and each course is cached for a day (grades change about three times a year). The passage text comes from the anex collector's own code, so it matches what the eval answers were written from.
 
 ## One format for everything
 
