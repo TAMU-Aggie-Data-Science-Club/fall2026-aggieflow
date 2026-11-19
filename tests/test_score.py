@@ -169,8 +169,45 @@ class LoadQuestionsTest(unittest.TestCase):
         self.assertIn("x.jsonl:4: skipped", err.getvalue())
         self.assertIn("x.jsonl:5: skipped, answerable but source_url", err.getvalue())
 
+    def test_missing_tools_come_from_the_file_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = score.load_questions(write_jsonl(tmp, "student-rules-x.jsonl", QUESTIONS[:1]))
+            catalog = score.load_questions(write_jsonl(tmp, "catalog-x.jsonl", QUESTIONS[:1]))
+            extra = score.load_questions(write_jsonl(tmp, "extra-x.jsonl", QUESTIONS[:1]))
+        self.assertEqual(rules[0]["tools"], ["search_student_rules"])
+        self.assertEqual(catalog[0]["tools"], ["search_degree_plans", "get_course"])
+        self.assertNotIn("tools", extra[0])  # no default for other prefixes
+
+    def test_given_fields_are_kept_including_no_tools(self):
+        row = {**QUESTIONS[2], "tools": [], "set": "regression", "tags": ["no-tool"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            [q] = score.load_questions(write_jsonl(tmp, "student-rules-x.jsonl", [row]))
+        self.assertEqual((q["tools"], q["set"], q["tags"]), ([], "regression", ["no-tool"]))
+
+    def test_malformed_optional_fields_are_skipped(self):
+        rows = [{**QUESTIONS[0], "tools": "search_registrar"},
+                {**QUESTIONS[0], "set": "easy"},
+                {**QUESTIONS[0], "args": ["MATH 151"]},
+                {**QUESTIONS[0], "tags": "shorthand"}]
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stderr(err):
+                loaded = score.load_questions(write_jsonl(tmp, "x.jsonl", rows))
+        self.assertEqual(loaded, [])
+        for n, field in enumerate(["tools", "set", "args", "tags"], start=1):
+            self.assertIn(f"x.jsonl:{n}: skipped, {field} must be", err.getvalue())
+
 
 class MainTest(unittest.TestCase):
+    def test_known_gap_questions_are_not_scored(self):
+        rows = [QUESTIONS[0], {**QUESTIONS[1], "tags": ["known-gap"]}]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_jsonl(tmp, "a-source.jsonl", rows)
+            code, out, err = run_main(["--dummy", "--questions", tmp])
+        self.assertEqual(code, 0)
+        self.assertIn("cited the expected page 0/1", out)
+        self.assertIn("a-source.jsonl: skipped 1 known-gap question(s)", out)
+
     def test_one_line_per_file_then_total(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_jsonl(tmp, "b-source.jsonl", QUESTIONS)
