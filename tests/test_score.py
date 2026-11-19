@@ -206,7 +206,7 @@ class MainTest(unittest.TestCase):
             code, out, err = run_main(["--dummy", "--questions", tmp])
         self.assertEqual(code, 0)
         self.assertIn("cited the expected page 0/1", out)
-        self.assertIn("a-source.jsonl: skipped 1 known-gap question(s)", err)
+        self.assertIn("a-source.jsonl: skipped 1 known-gap question(s)", out)
 
     def test_one_line_per_file_then_total(self):
         with tempfile.TemporaryDirectory() as tmp:

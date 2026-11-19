@@ -259,7 +259,7 @@ def main(argv=None) -> int:
         questions = load_questions(path)
         gaps = sum(map(is_known_gap, questions))
         if gaps:
-            print(f"{path.name}: skipped {gaps} {KNOWN_GAP} question(s)", file=sys.stderr)
+            print(f"{path.name}: skipped {gaps} {KNOWN_GAP} question(s)")
         counts = score([q for q in questions if not is_known_gap(q)], answer_fn)
         print(report_line(path.name, counts))
         for key in COUNTS:
