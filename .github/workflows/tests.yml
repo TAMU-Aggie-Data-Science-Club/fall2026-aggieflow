@@ -45,5 +45,6 @@ jobs:
       - name: Install
         run: uv sync --locked
 
+      # Live tests call real APIs and need keys, so CI runs only the offline ones.
       - name: Run tests
-        run: uv run --locked pytest -q
+        run: uv run --locked pytest -q -m "not live"
