@@ -24,6 +24,7 @@ When a line has no `tools`, the scorer picks a default from the file name:
 | `oal` | `search_tech_help` |
 | `catalog` | `search_degree_plans` or `get_course` |
 | `anex` | `get_course_grades` or `get_professor_grades` |
+| `transportation` | `search_transportation` |
 
 Files with any other prefix, like `extra-<name>.jsonl`, set `tools` on every line.
 

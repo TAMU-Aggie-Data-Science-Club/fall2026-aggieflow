@@ -46,4 +46,16 @@ def search_degree_plans(query: str) -> list[Passage]:
     return data.search("catalog", query)
 
 
-TOOLS = [search_student_rules, search_registrar, search_tech_help, search_degree_plans]
+@tool
+def search_transportation(query: str) -> list[Passage]:
+    """Search Transportation Services: parking permits, lots and garages,
+    night, break and visitor parking, citations and appeals, accessible
+    parking, AggieSpirit bus service and how to ride, gameday parking and
+    shuttles, bikes, scooters and EV charging. Not for live bus arrival times
+    or open garage spaces right now (we don't have them), or for the Student
+    Rules' conduct and appeals panels (use search_student_rules)."""
+    return data.search("transportation", query)
+
+
+TOOLS = [search_student_rules, search_registrar, search_tech_help, search_degree_plans,
+         search_transportation]

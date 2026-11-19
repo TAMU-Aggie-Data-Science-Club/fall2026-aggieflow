@@ -101,6 +101,17 @@ def test_empty_search_gives_not_sure():
     assert result["answer"] == NOT_SURE
 
 
+def test_transportation_search_answers_and_cites():
+    url = "https://transport.tamu.edu/Transit/howtoride.aspx"
+    model = ScriptedModel([
+        AIMessage("", tool_calls=[call("search_transportation", {"query": "bus fare"}, "1")]),
+        AIMessage(f"The buses are free ({url})."),
+    ])
+    result = answer("how much is the bus", graph=build_graph(model))
+    assert result["trace"] == [['policy_tools.search_transportation({"query": "bus fare"})']]
+    assert [p["source_url"] for p in result["sources"]] == [url]
+
+
 def test_round_limit_falls_back_when_model_errors():
     class Stubborn(ScriptedModel):
         """Always calls a tool; errors if asked to answer without tools."""

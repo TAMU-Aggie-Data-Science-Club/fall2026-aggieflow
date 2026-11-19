@@ -42,6 +42,7 @@ DEFAULT_TOOLS = {
     "oal": ["search_tech_help"],
     "catalog": ["search_degree_plans", "get_course"],
     "anex": ["get_course_grades", "get_professor_grades"],
+    "transportation": ["search_transportation"],
 }
 COUNTS = ("answerable", "cited", "not_sure_questions", "not_sure_correct",
           "wrongly_not_sure", "errors")
