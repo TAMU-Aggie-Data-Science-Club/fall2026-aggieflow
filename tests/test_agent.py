@@ -3,6 +3,8 @@
 Run from the repo root:  uv run pytest
 """
 
+import json
+
 import pytest
 from langchain_core.messages import AIMessage
 
@@ -144,6 +146,16 @@ def test_unknown_tool_is_reported_not_crashed():
     result = answer("weather?", graph=build_graph(model))
     assert result["answer"] == NOT_SURE
 
+
+
+def test_professor_grades_uses_the_initial_when_last_names_match(monkeypatch):
+    section = {"year": "2024", "semester": "FALL", "section": "501",
+               "A": "10", "B": "0", "C": "0", "D": "0", "F": "0", "Q": "0"}
+    feed = {"classes": [{**section, "prof": "SMITH A"}, {**section, "prof": "SMITH J"}]}
+    monkeypatch.setattr(data, "_fetch_anex", lambda dept, number: json.dumps(feed))
+    assert data.professor_grades("MATH 151", "Jane Smith")[0]["title"] == "MATH 151 grades with SMITH J"
+    with pytest.raises(ValueError, match="SMITH A, SMITH J"):
+        data.professor_grades("MATH 151", "Smith")  # no initial: ask instead of guessing
 
 
 def test_search_mode_defaults_to_keyword_and_rejects_unknown(monkeypatch):
