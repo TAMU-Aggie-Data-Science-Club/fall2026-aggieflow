@@ -25,6 +25,7 @@ When a line has no `tools`, the scorer picks a default from the file name:
 | `catalog` | `search_degree_plans` or `get_course` |
 | `anex` | `get_course_grades` or `get_professor_grades` |
 | `transportation` | `search_transportation` |
+| `ratemyprofessors` | `get_professor_ratings` |
 
 Files with any other prefix, like `extra-<name>.jsonl`, set `tools` on every line.
 

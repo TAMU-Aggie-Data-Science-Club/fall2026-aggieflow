@@ -1,7 +1,8 @@
 """course_tools: exact lookups for one course.
 
-Every tool takes the course the same way, a code like 'CSCE 121'. Data comes
-from the catalog and anex.us collectors (see agent/data.py).
+Course tools take the course the same way, a code like 'CSCE 121'. Data comes
+from the catalog and anex.us collectors, and live from RateMyProfessors
+(see agent/data.py).
 """
 
 from langchain_core.tools import tool
@@ -35,4 +36,15 @@ def get_professor_grades(course: str, professor: str) -> list[Passage]:
     return data.professor_grades(course, professor)
 
 
-TOOLS = [get_course, get_course_grades, get_professor_grades]
+@tool
+def get_professor_ratings(professor: str) -> list[Passage]:
+    """Get what students say about a Texas A&M professor on RateMyProfessors:
+    overall quality, difficulty, percent who would take them again, and their
+    newest reviews (each with the course it was for). Use for 'is this
+    professor good' or 'how do they teach'. `professor` is a name like 'Leyk'
+    or 'Teresa Leyk'; several professors may match, so check the department.
+    For grades they give, use get_professor_grades."""
+    return data.professor_ratings(professor)
+
+
+TOOLS = [get_course, get_course_grades, get_professor_grades, get_professor_ratings]
