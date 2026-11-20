@@ -27,6 +27,8 @@ pythonpath = ["."]  # so `uv run pytest` finds agent/ and pipeline/
 testpaths = ["tests"]
 # langsmith's pytest plugin uses an asyncio call Python 3.14 deprecates; not ours to fix.
 filterwarnings = ["ignore::DeprecationWarning:langsmith.*"]
+# Offline tests only by default. Run the live ones with `uv run pytest -m live`.
+addopts = ["-m", "not live"]
 markers = [
-    "live: calls a real model API (needs keys); CI skips these with -m \"not live\"",
+    "live: calls a real model API (needs keys); skipped unless you pass -m live",
 ]

@@ -34,14 +34,7 @@ from score import QUESTIONS, load_questions, question_files  # noqa: E402
 
 from agent.data import parse_course  # noqa: E402
 
-load_dotenv(ROOT / ".env")
-if not os.environ.get("LANGSMITH_API_KEY"):
-    os.environ.setdefault("LANGSMITH_TEST_TRACKING", "false")  # run locally, upload nothing
-
-pytestmark = [
-    pytest.mark.live,
-    pytest.mark.skipif(not os.environ.get("GROQ_API_KEY"), reason="needs GROQ_API_KEY"),
-]
+pytestmark = pytest.mark.live
 
 NO_TOOL = "(no tool)"
 # Groq's free tier limits requests and tokens per minute. Wait and retry on a
@@ -62,6 +55,12 @@ RESULTS: list[tuple[list[str], list[str]]] = []  # (expected tools, tools picked
 
 @pytest.fixture(scope="module")
 def agent_node():
+    # .env is loaded here, not at import, so offline tests in the same run never see its keys.
+    load_dotenv(ROOT / ".env")
+    if not os.environ.get("GROQ_API_KEY"):
+        pytest.skip("needs GROQ_API_KEY")
+    if not os.environ.get("LANGSMITH_API_KEY"):
+        os.environ.setdefault("LANGSMITH_TEST_TRACKING", "false")  # run locally, upload nothing
     from agent.graph import default_model, make_agent_node
 
     return make_agent_node(default_model())
