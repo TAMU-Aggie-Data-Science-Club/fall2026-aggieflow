@@ -355,7 +355,8 @@ def professor_grades(code: str, professor: str) -> list[Passage]:
 
     anex names professors like 'KEYSER J', so 'Keyser', 'keyser j' and
     'John Keyser' all match. Raises ValueError listing who taught the course
-    when nobody matches, so the model can try again.
+    when nobody matches, or the candidates when two share a last name and the
+    initial doesn't settle it, so the model can try again.
     """
     dept, number = parse_course(code)
     marker = " grades with "
@@ -367,11 +368,25 @@ def professor_grades(code: str, professor: str) -> list[Passage]:
         return []
 
     asked = set(_WORD.findall(professor.lower()))
+    matches = []  # (name, first initial, passages)
     for name, found in by_prof.items():
-        parts = name.lower().split()  # 'KEYSER J' -> last name ['keyser']
-        last = parts[:-1] if len(parts) > 1 and len(parts[-1]) <= 2 else parts
-        if set(last) <= asked:
-            return found
+        parts = name.lower().split()  # 'KEYSER J' -> last name ['keyser'], initial 'j'
+        initial = parts.pop()[0] if len(parts) > 1 and len(parts[-1]) <= 2 else ""
+        if set(parts) <= asked:
+            matches.append((name, initial, found))
+    if len(matches) == 1:
+        return matches[0][2]
+    if matches:
+        # Two professors share a last name ('SMITH A', 'SMITH J'): use the first name's initial.
+        by_initial = [m for m in matches if m[1] and any(
+            w[0] == m[1] for w in asked - set(m[0].lower().split()))]
+        if len(by_initial) == 1:
+            return by_initial[0][2]
+        names = ", ".join(sorted(m[0] for m in matches))
+        raise ValueError(
+            f"more than one professor matches {professor!r} in {dept} {number}: {names}. "
+            "Ask again with the first name or initial."
+        )
     names = ", ".join(sorted(by_prof))
     raise ValueError(
         f"no professor matching {professor!r} taught {dept} {number} since 2023. "
