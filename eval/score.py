@@ -43,6 +43,7 @@ DEFAULT_TOOLS = {
     "catalog": ["search_degree_plans", "get_course"],
     "anex": ["get_course_grades", "get_professor_grades"],
     "transportation": ["search_transportation"],
+    "ratemyprofessors": ["get_professor_ratings"],
 }
 COUNTS = ("answerable", "cited", "not_sure_questions", "not_sure_correct",
           "wrongly_not_sure", "errors")

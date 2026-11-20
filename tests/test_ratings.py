@@ -1,0 +1,34 @@
+"""get_professor_ratings, against a recorded RateMyProfessors response (see conftest.py)."""
+
+import pytest
+
+from agent import data
+
+
+def test_matches_are_passages_most_rated_first():
+    found = data.professor_ratings("Leyk")
+    assert [p["title"] for p in found] == [
+        "Teresa Leyk on RateMyProfessors",
+        "Zbigniew Leyk on RateMyProfessors",
+    ]
+    first = found[0]
+    assert first["id"] == "ratemyprofessors:609101:live"
+    assert first["source"] == "ratemyprofessors"
+    assert first["source_url"] == "https://www.ratemyprofessors.com/professor/609101"
+    assert "overall quality 3.1/5, difficulty 3.5/5, 60% would take again, from 157 ratings" in first["text"]
+    assert "CSCE221" in first["text"]
+
+
+def test_no_match_is_empty():
+    assert data.professor_ratings("Nobodyhere") == []
+
+
+def test_blank_name_is_rejected():
+    with pytest.raises(ValueError):
+        data.professor_ratings("  ")
+
+
+def test_changed_response_format_errors(monkeypatch):
+    monkeypatch.setattr(data, "_fetch_rmp", lambda name: {"data": None})
+    with pytest.raises(RuntimeError):
+        data.professor_ratings("Leyk")

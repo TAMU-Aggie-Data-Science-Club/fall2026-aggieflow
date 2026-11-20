@@ -1,0 +1,82 @@
+{
+ "data": {
+  "newSearch": {
+   "teachers": {
+    "edges": [
+     {
+      "node": {
+       "avgDifficulty": 3.5,
+       "avgRating": 3.1,
+       "department": "Computer Science",
+       "firstName": "Teresa",
+       "lastName": "Leyk",
+       "legacyId": 609101,
+       "numRatings": 157,
+       "ratings": {
+        "edges": [
+         {
+          "node": {
+           "class": "CSCE221",
+           "comment": "Overall the lectures felt fast paced and hard to follow, she picks people to work the problem. Attendance is mandatory for labs and you get 2 extra credit points on your total grade for showing up to every lab. Tests are stressful due to time limit and FRQs are way harder than the ones in lab. No grades are dropped so earn all the \"easier\" points. ",
+           "date": "2026-11-17 17:18:34 +0000 UTC",
+           "difficultyRatingRounded": 4,
+           "grade": "B",
+           "qualityRating": 3
+          }
+         },
+         {
+          "node": {
+           "class": "CSCE221",
+           "comment": "Lectures make zero sense, TAs will carry you in lab. Leyk will call people up at random to demonstrate topics, then will tell you off if you get something incorrect. Course content is not hard if you self study, but you won't learn anything from Leyk. Came into this class wanting to TA for it someday, left wanting nothing to do with it ever again.",
+           "date": "2026-11-09 18:13:12 +0000 UTC",
+           "difficultyRatingRounded": 3,
+           "grade": "Not sure yet",
+           "qualityRating": 1
+          }
+         }
+        ]
+       },
+       "wouldTakeAgainPercent": 60.4317
+      }
+     },
+     {
+      "node": {
+       "avgDifficulty": 2.5,
+       "avgRating": 3,
+       "department": "Computer Science",
+       "firstName": "Zbigniew",
+       "lastName": "Leyk",
+       "legacyId": 3027719,
+       "numRatings": 26,
+       "ratings": {
+        "edges": [
+         {
+          "node": {
+           "class": "120",
+           "comment": "His lectures can be a bit dry and hard to follow, but the course is survivable. The homework can be very long, so it's best to start early. There's a participation quiz at almost every lecture, making attendance practically mandatory. The exams are also quite tough overall",
+           "date": "2026-10-28 03:58:35 +0000 UTC",
+           "difficultyRatingRounded": 2,
+           "grade": "B+",
+           "qualityRating": 3
+          }
+         },
+         {
+          "node": {
+           "class": "120",
+           "comment": "lectures are like melatonin to an insomniac. he makes many mistakes during lecture, its not worth listening to just do homework during class. exams are super easy, just make sure to study the exam review and textbook concepts. homeworks can get quite difficult and long so start on them asap, but the late day system is a lifesaver.",
+           "date": "2026-10-18 03:33:04 +0000 UTC",
+           "difficultyRatingRounded": 1,
+           "grade": "B+",
+           "qualityRating": 2
+          }
+         }
+        ]
+       },
+       "wouldTakeAgainPercent": 40.7407
+      }
+     }
+    ]
+   }
+  }
+ }
+}
