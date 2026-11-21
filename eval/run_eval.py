@@ -12,8 +12,10 @@
      cited_page        an answerable task cites its source_url
      not_sure_correct  a NOT_SURE task says "not sure" and cites nothing
      tool_match        it called tools only from the task's "tools" (and none if that's [])
-     numbers_match     grade tasks only: every number in the reference answer, and the professor
-                       named there, is in the answer (GPA to 2 decimals, % within 1 point, counts within 1%)
+     numbers_match     grade tasks only: every number the answer states matches the reference or
+                       the passages it retrieved (GPA to 2 decimals, % within 1 point, counts within
+                       1%), and it names the reference's first professor. Short answers pass;
+                       wrong or made-up numbers fail.
    - LLM judges from eval/judges.py: correctness (skipped on grade tasks, where numbers_match
      grades the answer instead), relevance, groundedness, retrieval_relevance
    - path metrics, numbers that never fail a task: rounds, tool_call_count, redundant_calls,
@@ -101,26 +103,28 @@ def local_examples(tasks: list[dict]) -> list:
 # --- code graders ---------------------------------------------------------------
 
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(\s?%|\s?percent)?", re.IGNORECASE)
-_COURSE = re.compile(r"\b[A-Z]{3,4}\s?$")
 _PROFESSOR = re.compile(r"\b([A-Z]{2,}(?:[-'][A-Z]+)?) [A-Z]{1,2}\b(?![a-z\d])")
+_URL = re.compile(r"https?://\S+")
 
 
-def numbers_in(text: str, skip_years_and_courses: bool = False) -> list[tuple[str, float]]:
+def numbers_in(text: str) -> list[tuple[str, float]]:
     """[(kind, value)] for every number: kind is "percent", "gpa" (a decimal up to 4.5) or "count"."""
     found = []
     for m in _NUMBER.finditer(text):
         whole, decimal, percent = m.group(1), m.group(2), m.group(3)
         value = float(whole.replace(",", "") + (decimal or ""))
-        if skip_years_and_courses and not decimal and not percent:
-            if 2000 <= value <= 2035 or _COURSE.search(text[:m.start()]):
-                continue
         kind = "percent" if percent else "gpa" if decimal and value <= 4.5 else "count"
         found.append((kind, value))
     return found
 
 
-def _number_matches(kind: str, value: float, answer_numbers) -> bool:
-    for other_kind, other in answer_numbers:
+def claims(answer: str) -> str:
+    """The answer without its Sources list and links, whose dates and query numbers aren't claims."""
+    return _URL.sub(" ", answer.split("\nSources:")[0])
+
+
+def _number_matches(kind: str, value: float, known) -> bool:
+    for other_kind, other in known:
         if kind == "percent" and other_kind == "percent" and abs(other - value) <= 1:
             return True
         if kind == "gpa" and other_kind in ("gpa", "count") and round(other, 2) == round(value, 2):
@@ -130,18 +134,24 @@ def _number_matches(kind: str, value: float, answer_numbers) -> bool:
     return False
 
 
-def numbers_match(answer: str, reference: str) -> tuple[int | None, str]:
-    wanted = numbers_in(reference, skip_years_and_courses=True)
-    professors = {m.group(1) for m in _PROFESSOR.finditer(reference)}
-    if not wanted and not professors:
-        return None, "no numbers or professor in the reference"
-    have = numbers_in(answer)
-    missing = [f"{v:g}{'%' if k == 'percent' else ''}" for k, v in wanted
-               if not _number_matches(k, v, have)]
-    missing += [name for name in professors if name.lower() not in answer.lower()]
-    if missing:
-        return 0, "missing or wrong: " + ", ".join(missing)
-    return 1, f"all {len(wanted)} numbers{' and the professor' if professors else ''} match"
+def numbers_match(answer: str, reference: str, documents: list[dict] = ()) -> tuple[int | None, str]:
+    """Every number the answer states must match one in the reference or in the passages
+    the agent retrieved (GPA to 2 decimals, % within 1 point, counts within 1%), and the
+    answer must name the reference's first professor, if it names one. A short answer that
+    leaves out context passes; a wrong or made-up number fails."""
+    text = claims(answer)
+    stated = numbers_in(text)
+    known = numbers_in(reference) + [n for d in documents for n in numbers_in(d.get("text", ""))]
+    first_professor = next((m.group(1) for m in _PROFESSOR.finditer(reference)), None)
+    if not stated and not first_professor:
+        return (0, "the answer states no numbers") if numbers_in(reference) else (None, "nothing to check")
+    problems = [f"{v:g}{'%' if k == 'percent' else ''} not in the reference or passages"
+                for k, v in stated if not _number_matches(k, v, known)]
+    if first_professor and first_professor.lower() not in text.lower():
+        problems.append(f"doesn't name {first_professor}")
+    if problems:
+        return 0, "; ".join(problems)
+    return 1, f"all {len(stated)} numbers check out{' and it names ' + first_professor if first_professor else ''}"
 
 
 def is_grade_task(meta: dict) -> bool:
@@ -190,7 +200,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
         "tool_match": (None, "no expected tools") if expected is None else
         (int(set(called) <= set(expected) and bool(called) == bool(expected)),
          f"called {called}, expected {expected}"),
-        "numbers_match": numbers_match(answer, reference["answer"]) if grade_task else
+        "numbers_match": numbers_match(answer, reference["answer"], outputs.get("documents", [])) if grade_task else
         (None, "not a grade task"),
     }
     inputs = {"question": meta.get("question", "")}

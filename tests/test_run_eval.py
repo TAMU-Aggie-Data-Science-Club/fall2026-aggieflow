@@ -38,27 +38,34 @@ YES_JUDGES = [judge(n, 1) for n in ("correctness", "relevance", "groundedness", 
 
 REFERENCE = ("ALTEMOSE A taught 9 CHEM 107 sections from Spring 2023 to Fall 2025: 2,434 students, "
              "average GPA 3.08, 38% A, 118 Q-drops.")
+PASSAGES = [{"text": "CHEM 107 with ALTEMOSE A: 9 sections, 2434 students, average GPA 3.08, 38% A, "
+                     "36% B, 21% C, 118 Q-drops. Fall 2025: 508 students, average GPA 3.01."}]
 
 
-def test_numbers_match_ignores_years_and_course_numbers_and_allows_rounding():
-    answer = "Altemose: 9 sections, 2434 students, GPA 3.08, 38.4% A's, 118 Q-drops."
-    assert run_eval.numbers_match(answer, REFERENCE)[0] == 1
+def test_a_short_correct_answer_passes_and_the_sources_list_is_ignored():
+    answer = ("Altemose A averages a 3.08 GPA in CHEM 107. (https://anex.us/grades/?dept=CHEM&number=107)"
+              "\n\nSources:\n- CHEM 107: https://anex.us/grades/?dept=CHEM&number=107 (as of 2026-11-21T19:19:09Z)")
+    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES) == (1, "all 2 numbers check out and it names ALTEMOSE")
 
 
-@pytest.mark.parametrize("answer, missing", [
-    ("Altemose: 9 sections, 2434 students, GPA 3.1, 38% A, 118 Q-drops.", "3.08"),
-    ("Altemose: 9 sections, 2434 students, GPA 3.08, 40% A, 118 Q-drops.", "38%"),
-    ("Altemose: 9 sections, 2600 students, GPA 3.08, 38% A, 118 Q-drops.", "2434"),
-    ("Goodey: 9 sections, 2434 students, GPA 3.08, 38% A, 118 Q-drops.", "ALTEMOSE"),
+def test_numbers_from_the_passages_count_and_rounding_is_allowed():
+    answer = "ALTEMOSE A: 36% B's, and in Fall 2025 a 3.01 GPA across about 2,440 students, 38.4% A's."
+    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
+
+
+@pytest.mark.parametrize("answer, problem", [
+    ("ALTEMOSE A averages a 3.10 GPA.", "3.1 not in"),
+    ("ALTEMOSE A gives 45% A's.", "45% not in"),
+    ("ALTEMOSE A taught 2,600 students.", "2600 not in"),
+    ("GOODEY J averages a 3.08 GPA.", "doesn't name ALTEMOSE"),
 ])
-def test_numbers_match_fails_on_a_wrong_number_or_professor(answer, missing):
-    result, comment = run_eval.numbers_match(answer, REFERENCE)
-    assert result == 0 and missing in comment
+def test_a_wrong_number_or_professor_fails(answer, problem):
+    result, comment = run_eval.numbers_match(answer, REFERENCE, PASSAGES)
+    assert result == 0 and problem in comment
 
 
-def test_numbers_match_counts_within_one_percent():
-    assert run_eval.numbers_match("about 30,100 students", "30,287 students")[0] == 1
-    assert run_eval.numbers_match("about 29,000 students", "30,287 students")[0] == 0
+def test_an_answer_with_no_numbers_fails_when_numbers_were_expected():
+    assert run_eval.numbers_match("It's a hard class.", "2.68 average GPA", []) == (0, "the answer states no numbers")
 
 
 # --- path metrics -----------------------------------------------------------------

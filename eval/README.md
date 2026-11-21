@@ -66,3 +66,25 @@ The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a differen
 1. Run `uv run python eval/calibrate.py --make`. It runs the agent on 20 fixed questions (3 of them `NOT_SURE`) and writes `eval/calibration.jsonl`.
 2. Set every value under `labels` in that file to `"yes"`, `"no"` or `"unknown"`, using your own judgment. Read the `answer`, the `reference` and the `documents`.
 3. Run `uv run python eval/calibrate.py`. It prints the agreement for each judge, and every judge needs at least 85%. Where a judge disagrees with you, its reasoning is printed. Fix that judge's prompt and run it again.
+
+## Full-loop eval
+
+`eval/run_eval.py` runs the whole agent on every task in LangSmith, grades each run, and prints pass rates:
+
+```bash
+uv run python eval/run_eval.py --mode keyword --repetitions 3
+```
+
+- **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. Only new ids are added, so an edited question keeps its old example. `known-gap` tasks are skipped.
+- **Code graders** (1 or 0):
+  - `cited_page`
+  - `not_sure_correct`
+  - `tool_match`
+  - `numbers_match`, on grade tasks (expected tools include `get_course_grades` or `get_professor_grades`). Every number the answer states must match the reference or the passages it retrieved: GPA to 2 decimals, % within 1 point, counts within 1%. It must also name the reference's first professor. A short answer passes; a wrong or made-up number fails.
+- **LLM judges:** the four above. `correctness` is skipped on grade tasks, where `numbers_match` grades the answer.
+- **Path metrics:** `rounds`, `tool_call_count`, `redundant_calls`, `tool_error_rate`, `hit_round_limit` and `recovered`. These are recorded but never fail a task.
+- **`passed`:** a run passes when every outcome grader that applies passes. Those are `cited_page` (or `not_sure_correct`), `numbers_match` (or `correctness`), and `tool_match`. A judge's "unknown" doesn't count either way.
+- **Summary:** pass@1 (the average pass rate) and pass^k (passed all k runs), by source, `set` and tag.
+- **Experiment names** follow `<area>-<mode>-<commit>`, e.g. `agent-keyword-537a7f3`.
+- **Options:** `--questions <file>` runs one file. `--no-judges` uses the code graders only. `--no-upload` runs locally without a LangSmith key.
+- **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
