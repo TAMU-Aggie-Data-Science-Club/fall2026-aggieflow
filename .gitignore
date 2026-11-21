@@ -10,6 +10,9 @@ data/*
 # Scratch planning files (see AGENTS.md) — never part of a PR.
 .planning/
 
+# eval/run_eval.py --out files (one JSON line per run); shared by attaching them to issues
+eval/results/
+
 # --- Common noise ----------------------------------------------------------
 # OS / editor cruft
 .DS_Store

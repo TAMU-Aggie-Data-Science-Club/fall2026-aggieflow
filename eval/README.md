@@ -85,7 +85,46 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
 - **LLM judges:** the four above. `correctness` is skipped on grade tasks, where `numbers_match` grades the answer.
 - **Path metrics:** `rounds`, `tool_call_count`, `redundant_calls`, `tool_error_rate`, `hit_round_limit` and `recovered`. These are recorded but never fail a task.
 - **`passed`:** a run passes when every outcome grader that applies passes. Those are `cited_page` (or `not_sure_correct`), `numbers_match` (or `correctness`), and `tool_match`. A judge's "unknown" doesn't count either way.
-- **Summary:** pass@1 (the average pass rate) and pass^k (passed all k runs), by source, `set` and tag.
+- **Run metrics** (recorded, never fail a task):
+  - `latency_s`: seconds for the attempt that succeeded, so time spent waiting out rate limits isn't counted.
+  - `fell_back`: 1 if a vector or hybrid search fell back to keyword search during the run.
+  - `wrongly_not_sure`: an answerable task said "not sure" (a false refusal).
+  - `answered_out_of_scope`: a `NOT_SURE` task answered anyway (a false answer).
+- **Summary:**
+  - pass@1 (the average pass rate) with a 95% CI, by source, `set` and tag. The CI comes from a bootstrap over questions (2,000 resamples, seed 0); each question's runs stay together.
+  - pass^k (passed all k runs), when k is more than 1.
+  - Grader averages, latency p50/p95, and the number of runs with a fallback. A vector or hybrid experiment with any fallbacks isn't valid for comparing search modes.
+  - The false refusal and false answer counts.
+- **Saved results:** every run is written as one JSON line to `--out PATH`, by default `eval/results/<experiment>.jsonl` (git-ignored). Each line holds the experiment, commit, model, mode, `setup:` line, question id, source, `set`, tags, repetition, `passed` and every other score.
 - **Experiment names** follow `<area>-<mode>-<commit>`, e.g. `agent-keyword-537a7f3`.
-- **Options:** `--questions <file>` runs one file. `--no-judges` uses the code graders only. `--no-upload` runs locally without a LangSmith key.
+- **Options:**
+  - `--questions <file>` runs one file.
+  - `--search-only` keeps only tasks whose expected tools include a `search_*` tool. Those are the only tasks the search mode can change.
+  - `--no-judges` uses the code graders only.
+  - `--no-upload` runs locally without a LangSmith key.
 - **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
+
+### Merging and comparing results
+
+When a run is split across members, each with their own Groq key, merge everyone's `--out` files into one summary:
+
+```bash
+uv run python eval/summarize.py eval/results/agent-keyword-abc1234-*.jsonl
+```
+
+It refuses to merge files whose commit, model or mode differ.
+
+Compare two experiments question by question, for example keyword against vector on the same commit:
+
+```bash
+uv run python eval/compare.py keyword.jsonl vector.jsonl
+uv run python eval/compare.py --a keyword-1.jsonl keyword-2.jsonl --b vector-1.jsonl vector-2.jsonl
+```
+
+Only questions on both sides count. For each grader and metric, it prints:
+
+- the mean in A and in B;
+- B minus A, with a paired bootstrap 95% CI over questions;
+- wins, losses and ties on `passed`.
+
+Each side must be one commit, model and mode, and both sides must share the commit and model.
