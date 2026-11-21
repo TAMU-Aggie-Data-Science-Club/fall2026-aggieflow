@@ -47,6 +47,22 @@ def trace(messages) -> list[list[str]]:
     return rounds
 
 
+def tool_calls(messages) -> list[dict]:
+    """Every tool call in order: {"round", "name", "args", "error"}, where error is True
+    when the tool's result was an "Error: ..." message (the tools node reports failures
+    to the model that way instead of crashing). Path metrics in eval/run_eval.py read this."""
+    results = {m.tool_call_id: m.content for m in messages if getattr(m, "tool_call_id", None)}
+    calls, round_number = [], 0
+    for m in messages:
+        if getattr(m, "tool_calls", None):
+            round_number += 1
+            for c in m.tool_calls:
+                result = results.get(c["id"], "")
+                calls.append({"round": round_number, "name": c["name"], "args": c["args"],
+                              "error": isinstance(result, str) and result.startswith("Error:")})
+    return calls
+
+
 @lru_cache(maxsize=1)
 def git_commit() -> str:
     """The short commit hash, plus " + uncommitted changes" if tracked files changed."""
@@ -84,6 +100,7 @@ def answer(question: str, graph=None, metadata: dict | None = None) -> dict:
         "sources": [passages cited in the answer],
         "documents": [every passage the tools returned, cited or not],
         "trace": [[tool calls], ...] round by round,
+        "calls": [{"round", "name", "args", "error"}, ...] every tool call in order,
     }
     "documents" is what groundedness and retrieval-relevance judges read.
     """
@@ -94,7 +111,7 @@ def answer(question: str, graph=None, metadata: dict | None = None) -> dict:
     _, cited = finalize(state["messages"][-1].text, retrieved)
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
     return {"answer": state["answer"], "sources": cited, "documents": documents,
-            "trace": trace(state["messages"])}
+            "trace": trace(state["messages"]), "calls": tool_calls(state["messages"])}
 
 
 def _print(question: str, result: dict) -> None:
