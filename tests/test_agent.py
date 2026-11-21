@@ -145,6 +145,19 @@ def test_unknown_tool_is_reported_not_crashed():
     ])
     result = answer("weather?", graph=build_graph(model))
     assert result["answer"] == NOT_SURE
+    assert result["calls"] == [{"round": 1, "name": "get_weather", "args": {}, "error": True}]
+
+
+def test_calls_lists_each_tool_call_with_its_round_and_error_flag():
+    model = ScriptedModel([
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q-drop"}, "1"),
+                                  call("get_weather", {}, "2")]),
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q-drop"}, "3")]),
+        AIMessage("Four (https://student-rules.tamu.edu/rule01/)."),
+    ])
+    calls = answer("q drops?", graph=build_graph(model))["calls"]
+    assert [(c["round"], c["name"], c["error"]) for c in calls] == [
+        (1, "search_student_rules", False), (1, "get_weather", True), (2, "search_student_rules", False)]
 
 
 
