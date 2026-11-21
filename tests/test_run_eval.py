@@ -249,6 +249,12 @@ def test_summarize_merges_files_from_the_same_setup(tmp_path, capsys):
     assert "p50 3.0, p95 4.0 over 3 runs" in out and "pass^k not measured" in out
 
 
+def test_summary_counts_agent_runs_that_failed(capsys):
+    failed = {**record("r-02", 0), "scores": {}}
+    run_eval.print_summary(run_eval.summarize([record("r-01", 1), failed]))
+    assert "agent runs that failed (counted as not passed): 1" in capsys.readouterr().out
+
+
 def test_summarize_refuses_to_mix_commits_models_or_modes(tmp_path, capsys):
     a = write(tmp_path / "a.jsonl", [record("r-01", 1)])
     b = write(tmp_path / "b.jsonl", [record("r-02", 1, mode="vector")])

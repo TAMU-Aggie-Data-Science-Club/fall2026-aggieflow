@@ -301,7 +301,7 @@ def write_records(path: Path, recs: list[dict]) -> None:
 
 def summarize(recs: list[dict]) -> dict:
     """{"passed": {task id: [0/1 per run]}, "groups": {group: {task ids}}, "values": {key: [scores]},
-    "modes": {modes seen}}"""
+    "modes": {modes seen}, "failed_runs": runs where the agent raised, so nothing was graded}"""
     passed, groups, values = defaultdict(list), defaultdict(set), defaultdict(list)
     for r in recs:
         passed[r["id"]].append(r["passed"])
@@ -311,7 +311,8 @@ def summarize(recs: list[dict]) -> dict:
         for key, s in r["scores"].items():
             if s is not None:
                 values[key].append(float(s))
-    return {"passed": passed, "groups": groups, "values": values, "modes": {r.get("mode") for r in recs}}
+    return {"passed": passed, "groups": groups, "values": values, "modes": {r.get("mode") for r in recs},
+            "failed_runs": sum(not r["scores"] for r in recs)}
 
 
 def pass_rate(passed: dict, ids) -> tuple[float, float, float]:
@@ -353,6 +354,9 @@ def print_summary(summary: dict) -> None:
     if latency:
         print(f"\nlatency (s, without rate-limit waits): p50 {percentile(latency, 0.5):.1f}, "
               f"p95 {percentile(latency, 0.95):.1f} over {len(latency)} runs")
+    if summary.get("failed_runs"):
+        print(f"\nagent runs that failed (counted as not passed): {summary['failed_runs']}. "
+              "If they hit a DAILY TOKEN LIMIT, rerun those tasks with another key.")
     fallbacks = int(sum(values.get("fell_back", [])))
     print(f"fallbacks: {fallbacks} run(s) with a search that fell back to keyword")
     if fallbacks and summary["modes"] - {"keyword"}:
