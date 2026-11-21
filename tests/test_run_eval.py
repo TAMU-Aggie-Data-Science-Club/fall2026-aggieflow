@@ -142,6 +142,34 @@ def test_a_failed_agent_run_fails_the_task():
     assert run_eval.grade(RULES_META, RULES_REF, None, YES_JUDGES) == {"passed": (0, "the agent run failed")}
 
 
+# --- retries ----------------------------------------------------------------------
+
+class RateLimitError(Exception):
+    pass
+
+
+def test_retry_waits_out_a_per_minute_limit(capsys):
+    attempts, waits = [], []
+
+    def flaky():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RateLimitError("tokens per minute (TPM): Limit 8000")
+        return "ok"
+    assert run_eval.with_retry(flaky, sleep=waits.append) == "ok"
+    assert waits == [15]
+
+
+def test_retry_gives_up_at_once_on_the_daily_limit(capsys):
+    waits = []
+
+    def capped():
+        raise RateLimitError("Rate limit reached ... on tokens per day (TPD): Limit 200000")
+    with pytest.raises(RateLimitError):
+        run_eval.with_retry(capped, sleep=waits.append)
+    assert waits == [] and run_eval.DAILY_LIMIT in capsys.readouterr().err
+
+
 # --- end to end, locally ----------------------------------------------------------
 
 def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):

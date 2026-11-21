@@ -100,6 +100,31 @@ def local_examples(tasks: list[dict]) -> list:
                             created_at=now, **example_fields(t)) for t in tasks]
 
 
+# --- retries ---------------------------------------------------------------------
+
+DAILY_LIMIT = "DAILY TOKEN LIMIT"  # printed when a Groq key runs out for the day
+
+
+def with_retry(fn, *args, tries=8, wait=15, sleep=None, **kwargs):
+    """Call fn, waiting out per-minute rate limits and connection blips. A daily token limit
+    isn't waited out (it lasts hours): it's raised at once, after printing DAILY_LIMIT."""
+    import time
+
+    from calibrate import RETRY
+
+    for attempt in range(tries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as err:
+            if "tokens per day" in str(err):
+                print(f"{DAILY_LIMIT}: {type(err).__name__}", file=sys.stderr, flush=True)
+                raise
+            if type(err).__name__ not in RETRY or attempt == tries - 1:
+                raise
+            print(f"  {type(err).__name__}, waiting {wait}s", file=sys.stderr, flush=True)
+            (sleep or time.sleep)(wait)
+
+
 # --- code graders ---------------------------------------------------------------
 
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(\s?%|\s?percent)?", re.IGNORECASE)
@@ -209,8 +234,6 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
         if name == "correctness" and grade_task:
             results[name] = (None, "grade task: numbers_match grades the answer")
             continue
-        from calibrate import with_retry
-
         r = with_retry(judge, inputs, outputs, reference)
         results[name] = (r["score"], r.get("comment", ""))
     for key, value in path_metrics(outputs.get("calls", []), meta.get("tags") or [], max_rounds).items():
@@ -279,7 +302,6 @@ def experiment_prefix(mode: str) -> str:
 def answer_fn(question: str, question_id: str) -> dict:
     """The real agent, retrying rate limits. Tests replace this."""
     from agent.run import answer
-    from calibrate import with_retry
 
     return with_retry(answer, question, metadata={"question_id": question_id})
 
