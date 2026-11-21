@@ -9,6 +9,7 @@ Reads every eval/questions/*.jsonl file (format in DATA.md, "Eval question forma
 prints one line per file plus a TOTAL line:
 
 - cited the expected page: the answer's sources include the question's source_url
+  (or one of its also_accept pages)
 - said not sure correctly: a NOT_SURE question got "not sure" and cited nothing
 - wrongly not sure: an answerable question got "not sure"
 - errors: the answer function raised (counted as a miss; the run keeps going)
@@ -130,8 +131,8 @@ def default_tools(path: Path) -> list[str] | None:
 
 
 def _bad_optional_field(q: dict) -> str | None:
-    """Why an optional field (tools, args, set, tags) is malformed, or None."""
-    for key in ("tools", "tags"):
+    """Why an optional field (tools, also_accept, args, set, tags) is malformed, or None."""
+    for key in ("tools", "tags", "also_accept"):
         if key in q and not (isinstance(q[key], list) and all(isinstance(t, str) for t in q[key])):
             return f"{key} must be a list of strings"
     if "args" in q and not isinstance(q["args"], dict):
@@ -143,6 +144,12 @@ def _bad_optional_field(q: dict) -> str | None:
 
 def is_known_gap(q: dict) -> bool:
     return KNOWN_GAP in q.get("tags", [])
+
+
+def accepted_urls(q: dict) -> set[str]:
+    """The normalized pages a citation may point to: source_url plus any also_accept pages."""
+    urls = [q.get("source_url"), *(q.get("also_accept") or [])]
+    return {normalize_url(u) for u in urls if u}
 
 
 def load_questions(path: Path) -> list[dict]:
@@ -198,7 +205,7 @@ def score(questions: list[dict], answer_fn) -> dict:
             if said_not_sure and not sources:
                 counts["not_sure_correct"] += 1
         else:
-            if normalize_url(q["source_url"]) in cited:
+            if accepted_urls(q) & cited:
                 counts["cited"] += 1
             if said_not_sure:
                 counts["wrongly_not_sure"] += 1

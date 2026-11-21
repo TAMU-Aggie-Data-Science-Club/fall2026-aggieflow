@@ -150,6 +150,23 @@ class ScoreTest(unittest.TestCase):
         self.assertIn("t-02: error: KeyError", err)
 
 
+class AlsoAcceptTest(unittest.TestCase):
+    def test_citing_an_also_accept_page_counts(self):
+        q = {**QUESTIONS[0], "also_accept": [RULE07]}
+        self.assertEqual(score.accepted_urls(q), {score.normalize_url(RULE01), score.normalize_url(RULE07)})
+        counts = score.score([q], answers({q["question"]: {"answer": "Four.", "sources": [passage(RULE07)]}}))
+        self.assertEqual(counts["cited"], 1)
+        self.assertEqual(score.accepted_urls(QUESTIONS[2]), set())  # NOT_SURE: nothing to cite
+
+    def test_also_accept_must_be_a_list_of_strings(self):
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stderr(err):
+                loaded = score.load_questions(write_jsonl(tmp, "x.jsonl", [{**QUESTIONS[0], "also_accept": RULE07}]))
+        self.assertEqual(loaded, [])
+        self.assertIn("also_accept must be a list of strings", err.getvalue())
+
+
 class LoadQuestionsTest(unittest.TestCase):
     def test_bad_lines_are_reported_and_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:

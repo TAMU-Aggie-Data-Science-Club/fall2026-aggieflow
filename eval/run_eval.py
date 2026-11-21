@@ -4,12 +4,12 @@
     uv run python eval/run_eval.py --questions eval/questions/anex-rushilsagar.jsonl --repetitions 1
     uv run python eval/run_eval.py --no-upload --no-judges     # no LangSmith key, code graders only
 
-1. Syncs eval/questions/*.jsonl to the LangSmith dataset "aggieflow-questions". Only
-   question ids that aren't in the dataset yet are added; an edited question keeps its old example.
+1. Syncs eval/questions/*.jsonl to the LangSmith dataset "aggieflow-questions": new question
+   ids are added, and an edited question's example is updated to match its line.
 2. Runs agent.run.answer() on each task --repetitions times with client.evaluate().
 3. Grades every run (one evaluator, so each LLM judge runs once per run):
    - code graders, 1 or 0:
-     cited_page        an answerable task cites its source_url
+     cited_page        an answerable task cites its source_url (or an also_accept page)
      not_sure_correct  a NOT_SURE task says "not sure" and cites nothing
      tool_match        it called tools only from the task's "tools" (and none if that's [])
      numbers_match     grade tasks only: every number the answer states matches the reference or
@@ -71,21 +71,36 @@ def load_tasks(path: Path = score.QUESTIONS) -> list[dict]:
 def example_fields(task: dict) -> dict:
     return {
         "inputs": {"question": task["question"]},
-        "outputs": {"answer": task["answer"], "source_url": task["source_url"]},
+        "outputs": {"answer": task["answer"], "source_url": task["source_url"],
+                    "also_accept": task.get("also_accept") or []},
         "metadata": {"id": task["id"], "source": task["source"], "tools": task.get("tools"),
                      "set": task.get("set"), "tags": task.get("tags", [])},
     }
 
 
+def is_stale(example, fields: dict) -> bool:
+    """The example differs from its question line (ignoring keys LangSmith adds to metadata)."""
+    meta = {k: example.metadata.get(k) for k in fields["metadata"]}
+    return (example.inputs != fields["inputs"] or example.outputs != fields["outputs"]
+            or meta != fields["metadata"])
+
+
 def sync_dataset(client, tasks: list[dict]) -> list:
-    """Add tasks whose id isn't in the dataset yet; return the dataset's examples for these tasks."""
+    """Add tasks whose id isn't in the dataset yet and update examples whose question line changed,
+    so a fixed answer or source_url is what gets graded. Returns the examples for these tasks."""
     if not client.has_dataset(dataset_name=DATASET):
         client.create_dataset(DATASET, description="AggieFlow eval questions (eval/questions/*.jsonl)")
-    existing = {e.metadata.get("id") for e in client.list_examples(dataset_name=DATASET)}
+    existing = {e.metadata.get("id"): e for e in client.list_examples(dataset_name=DATASET)}
     new = [t for t in tasks if t["id"] not in existing]
     if new:
         client.create_examples(dataset_name=DATASET, examples=[example_fields(t) for t in new])
-    print(f"dataset {DATASET}: {len(new)} new examples, {len(existing)} already there")
+    changed = 0
+    for t in tasks:
+        example, fields = existing.get(t["id"]), example_fields(t)
+        if example is not None and is_stale(example, fields):
+            client.update_example(example.id, **fields)
+            changed += 1
+    print(f"dataset {DATASET}: {len(new)} new, {changed} updated, {len(existing)} already there")
     by_id = {e.metadata.get("id"): e for e in client.list_examples(dataset_name=DATASET)}
     return [by_id[t["id"]] for t in tasks if t["id"] in by_id]
 
@@ -219,7 +234,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
 
     results = {
         "cited_page": (None, "NOT_SURE task") if expects_not_sure else
-        (int(score.normalize_url(reference["source_url"]) in cited), f"cited {sorted(cited)}"),
+        (int(bool(score.accepted_urls(reference) & cited)), f"cited {sorted(cited)}"),
         "not_sure_correct": (int(said_not_sure and not cited), "") if expects_not_sure else
         (None, "answerable task"),
         "tool_match": (None, "no expected tools") if expected is None else
