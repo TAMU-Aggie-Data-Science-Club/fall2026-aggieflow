@@ -25,7 +25,7 @@ Build an assistant that answers Texas A&M students' academic and campus question
 
 - **Scoping is done.** The problem and example questions are in the README.
 - **All 9 sources are mapped.** [Deliverable 2](deliverable2/README.md) has reports for Course Catalog, Registrar, Student Rules, Technology Services, Transportation, Anex.us, Libraries, RateMyProfessors, and r/aggies. Reddit and RateMyProfessors are still **on hold** while PMs review their terms of use.
-- **Deliverable 3 is partly in.** [Deliverable 3](deliverable3/README.md) was due Nov 15.
+- **Deliverable 3 is partly in.** Deliverable 3 (collectors and eval questions) was due Nov 15; the passage and question formats now live in [`DATA.md`](DATA.md).
   - **Merged:** collectors for Student Rules, Registrar, and Technology Services; the format checker and the eval scorer; and 42 evaluation questions.
   - **Still open, with no owner:** collectors for Course Catalog (#32), anex.us (#31), and Transportation (#36); the database (#37) and the loader (#38).
 - **The agent skeleton is merged.** It has a router and three tool groups (policy, courses, campus), but the tools still return placeholder text until the database and loader land.

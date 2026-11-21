@@ -5,7 +5,7 @@
     python eval/score.py --d1 deliverable1/rushil.py   # a Deliverable 1 agent
     python eval/score.py --questions eval/questions/student-rules-rushilsagar.jsonl
 
-Reads every eval/questions/*.jsonl file (format in deliverable3/README.md, Part 2) and
+Reads every eval/questions/*.jsonl file (format in DATA.md, "Eval question format") and
 prints one line per file plus a TOTAL line:
 
 - cited the expected page: the answer's sources include the question's source_url

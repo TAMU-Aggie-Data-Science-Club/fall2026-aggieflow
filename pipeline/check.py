@@ -2,7 +2,7 @@
 
 Every Track A collector writes data/processed/<source>.jsonl, one passage per
 line. This script reads those files and reports every line that breaks the
-format in deliverable3/README.md, so problems are caught before the loader
+format in DATA.md, so problems are caught before the loader
 puts them in the database.
 
 Run from the repo root:

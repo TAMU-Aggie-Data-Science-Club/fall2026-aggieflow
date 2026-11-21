@@ -53,6 +53,35 @@ The collector reads the Registrar sitemap, downloads each page (about 145, one p
 
 Keep all raw and processed data local; the `data/` directory is git-ignored.
 
+## Passage format
+
+Each collector writes `data/raw/<source>/` (exactly what the site returned, never edited) and `data/processed/<source>.jsonl`. Every line of the processed file is one passage:
+
+```json
+{"id": "student-rules:rule07:3", "source": "student-rules", "title": "Rule 7: Attendance", "text": "An absence is considered excused when...", "source_url": "https://student-rules.tamu.edu/rule07/", "fetched_at": "2026-11-10T18:04:00Z"}
+```
+
+| Field | Rule |
+|---|---|
+| `id` | `<source>:<page key>:<chunk number>`. Stable across runs (a slug or course code, not a run-wide counter), so re-runs replace passages instead of duplicating them. |
+| `source` | The source name: `anex`, `catalog`, `oal`, `registrar`, `student-rules`, `transportation`. |
+| `title` | The page title or section heading. |
+| `text` | Plain text, no HTML, menus, headers or footers. About 100–400 words, split at headings, never mid-sentence. |
+| `source_url` | The page a student opens to check the answer (the citation). A real page, not an API URL. |
+| `fetched_at` | Fetch time in UTC ISO 8601 (`2026-11-10T18:04:00Z`). |
+
+Don't add or rename fields: `pipeline/check.py` and `pipeline/load.py` depend on exactly these. Check a file with `python pipeline/check.py data/processed/<source>.jsonl`.
+
+## Eval question format
+
+`eval/questions/<source>-<you>.jsonl`, one question per line:
+
+```json
+{"id": "student-rules-rushilsagar-01", "question": "How many days do I have to turn in a doctor's note for an excused absence?", "answer": "Within two working days of returning to class.", "source_url": "https://student-rules.tamu.edu/rule07/"}
+```
+
+Write questions the way students ask them ("when's q drop"). A question the sources can't answer uses `"answer": "NOT_SURE"` and `"source_url": null`.
+
 ## Local layout convention
 
 The `data/` folder is git-ignored, but keep a consistent structure inside it so everyone's local copy matches:
