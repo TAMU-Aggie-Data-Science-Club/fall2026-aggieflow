@@ -1,4 +1,5 @@
-"""Offline tests for eval/run_eval.py: fake agent and judges, LangSmith's evaluate() run locally."""
+"""Offline tests for eval/run_eval.py, summarize.py and compare.py: fake agent and judges,
+LangSmith's evaluate() run locally."""
 
 import importlib.util
 import json
@@ -10,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("run_eval", ROOT / "eval" / "run_eval.py")
 run_eval = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(run_eval)
+import compare  # noqa: E402  (eval/ is on sys.path once run_eval loads)
+import summarize  # noqa: E402
 
 RULE01 = "https://student-rules.tamu.edu/rule01/"
 CHEM = "https://anex.us/grades/?dept=CHEM&number=107"
@@ -138,6 +141,24 @@ def test_not_sure_task_with_no_tools():
     assert scores(run_eval.grade(meta, ref, searched, None))["passed"] == 0  # tool_match fails
 
 
+def test_run_metrics_are_recorded_and_do_not_gate():
+    out = {**RULES_OUT, "latency_s": 2.5, "fell_back": 1}
+    s = scores(run_eval.grade(RULES_META, RULES_REF, out, YES_JUDGES))
+    assert (s["latency_s"], s["fell_back"], s["wrongly_not_sure"], s["passed"]) == (2.5, 1, 0, 1)
+    assert s["answered_out_of_scope"] is None
+    refused = {**RULES_OUT, "answer": f"I'm not sure. ({RULE01})"}
+    assert scores(run_eval.grade(RULES_META, RULES_REF, refused, YES_JUDGES))["wrongly_not_sure"] == 1
+
+
+def test_a_not_sure_task_that_answers_anyway_counts_as_answered_out_of_scope():
+    meta = {"id": "e-01", "source": "extra", "tools": [], "tags": []}
+    ref = {"answer": "NOT_SURE", "source_url": None}
+    answered = {"answer": "Sbisa closes at 8.", "sources": [], "documents": [], "calls": []}
+    s = scores(run_eval.grade(meta, ref, answered, None))
+    assert (s["answered_out_of_scope"], s["wrongly_not_sure"], s["passed"]) == (1, None, 0)
+    assert s["latency_s"] is None  # a fake agent that doesn't time itself
+
+
 def test_a_failed_agent_run_fails_the_task():
     assert run_eval.grade(RULES_META, RULES_REF, None, YES_JUDGES) == {"passed": (0, "the agent run failed")}
 
@@ -170,6 +191,92 @@ def test_retry_gives_up_at_once_on_the_daily_limit(capsys):
     assert waits == [] and run_eval.DAILY_LIMIT in capsys.readouterr().err
 
 
+def test_measured_times_only_the_attempt_that_succeeded():
+    class Data:
+        fallback_count = 0
+
+    ticks = iter([0.0, 100.0, 104.5])  # attempt 1 starts at 0 and fails; attempt 2 runs 100 -> 104.5
+    attempts = []
+
+    def answer(question, metadata):
+        attempts.append(metadata)
+        if len(attempts) == 1:
+            raise RateLimitError("tokens per minute (TPM): Limit 8000")
+        Data.fallback_count += 1  # a vector search fell back on the attempt that worked
+        return {"answer": "Four."}
+
+    result = run_eval.with_retry(run_eval.measured, answer, Data, "q", "sr-01",
+                                 clock=lambda: next(ticks), sleep=lambda s: None)
+    assert result == {"answer": "Four.", "latency_s": 4.5, "fell_back": 1}
+    assert attempts[-1] == {"question_id": "sr-01"}
+
+
+def test_percentile_and_pass_rate_ci():
+    assert run_eval.percentile([5, 1, 3, 2, 4], 0.5) == 3
+    assert run_eval.percentile(list(range(1, 101)), 0.95) == 95
+    at1, low, high = run_eval.pass_rate({"a": [1, 1], "b": [0, 1], "c": [0, 0]}, {"a", "b", "c"})
+    assert at1 == 0.5 and 0 <= low < 0.5 < high <= 1
+    assert run_eval.pass_rate({"a": [1]}, {"a"}) == (1.0, 1.0, 1.0)
+
+
+def test_search_only_keeps_tasks_that_expect_a_search_tool():
+    assert run_eval.is_search_task({"tools": ["search_registrar", "get_course"]})
+    assert not run_eval.is_search_task({"tools": ["get_course_grades", "get_professor_grades"]})
+    assert not run_eval.is_search_task({"tools": []}) and not run_eval.is_search_task({})
+
+
+# --- summarize and compare --------------------------------------------------------
+
+def record(qid, passed, rep=1, mode="keyword", commit="abc1234", source="registrar", **scores):
+    return {"experiment": f"agent-{mode}-{commit}-x", "commit": commit, "model": "m", "mode": mode,
+            "setup": f"setup: m; {mode}", "id": qid, "source": source, "set": None, "tags": [],
+            "repetition": rep, "passed": passed, "scores": {"cited_page": passed, **scores}}
+
+
+def write(path, recs):
+    run_eval.write_records(path, recs)
+    return path
+
+
+def test_summarize_merges_files_from_the_same_setup(tmp_path, capsys):
+    a = write(tmp_path / "a.jsonl", [record("r-01", 1, latency_s=2.0), record("r-02", 0, latency_s=4.0)])
+    b = write(tmp_path / "b.jsonl", [record("sr-01", 1, source="student-rules", latency_s=3.0, fell_back=0)])
+    assert summarize.main([str(a), str(b)]) == 0
+    out = capsys.readouterr().out
+    lines = {line.split()[0]: line.split()[1:] for line in out.splitlines() if line.strip()}
+    assert lines["all"][:2] == ["3", "67%"]
+    assert lines["source=registrar"][:2] == ["2", "50%"]
+    assert "p50 3.0, p95 4.0 over 3 runs" in out and "pass^k not measured" in out
+
+
+def test_summarize_refuses_to_mix_commits_models_or_modes(tmp_path, capsys):
+    a = write(tmp_path / "a.jsonl", [record("r-01", 1)])
+    b = write(tmp_path / "b.jsonl", [record("r-02", 1, mode="vector")])
+    assert summarize.main([str(a), str(b)]) == 1
+    assert "mix modes: keyword, vector" in capsys.readouterr().err
+
+
+def test_compare_pairs_questions_and_counts_wins():
+    a = [record("q1", 1), record("q2", 0), record("q3", 1), record("q4", 1)]
+    b = [record("q1", 1, mode="vector"), record("q2", 1, mode="vector"), record("q3", 0, mode="vector"),
+         record("q2", 1, rep=2, mode="vector"), record("q5", 1, mode="vector")]
+    result = compare.compare(a, b)
+    assert (result["both"], result["a_only"], result["b_only"]) == (3, 1, 1)
+    assert (result["wins"], result["losses"], result["ties"]) == (1, 1, 1)
+    metric, n, mean_a, mean_b, diff, low, high = result["rows"][0]
+    assert (metric, n, diff) == ("passed", 3, 0.0) and low <= 0 <= high
+
+
+def test_compare_main_refuses_different_commits(tmp_path, capsys):
+    a = write(tmp_path / "a.jsonl", [record("q1", 1)])
+    b = write(tmp_path / "b.jsonl", [record("q1", 1, mode="vector", commit="def5678")])
+    assert compare.main([str(a), str(b)]) == 1
+    assert "mix commits" in capsys.readouterr().err
+    same = write(tmp_path / "c.jsonl", [record("q1", 0, mode="vector")])
+    assert compare.main(["--a", str(a), "--b", str(same)]) == 0
+    assert "B wins 0, loses 1, ties 0" in capsys.readouterr().out
+
+
 # --- end to end, locally ----------------------------------------------------------
 
 def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
@@ -192,11 +299,24 @@ def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run_eval, "answer_fn", fake_answer)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")  # main sets it; monkeypatch restores it after
+    out_file = tmp_path / "results" / "run.jsonl"
     assert run_eval.main(["--questions", str(tmp_path), "--repetitions", "2",
-                          "--no-upload", "--no-judges"]) == 0
+                          "--no-upload", "--no-judges", "--out", str(out_file)]) == 0
     out = capsys.readouterr().out
     assert "setup: " in out
     lines = {line.split()[0]: line.split()[1:] for line in out.splitlines() if line.strip()}
-    assert lines["all"] == ["2", "75%", "50%"]  # sr-01 passed 1 of 2 runs, sr-02 both
-    assert lines["source=student-rules"] == ["2", "75%", "50%"]
-    assert lines["tag=no-tool"] == ["1", "100%", "100%"]
+    assert lines["all"] == ["2", "75%", "[50%,", "100%]", "50%"]  # sr-01 passed 1 of 2 runs, sr-02 both
+    assert lines["source=student-rules"][:2] == ["2", "75%"]
+    assert lines["tag=no-tool"] == ["1", "100%", "[100%,", "100%]", "100%"]
+    assert "false refusals (wrongly_not_sure): 0 of 2 answerable runs" in out
+    assert "false answers (answered_out_of_scope): 0 of 2 NOT_SURE runs" in out
+
+    saved = summarize.load([out_file])
+    assert len(saved) == 4 and {r["mode"] for r in saved} == {"keyword"}
+    assert sorted((r["id"], r["repetition"], r["passed"]) for r in saved) == [
+        ("sr-01", 1, 1), ("sr-01", 2, 0), ("sr-02", 1, 1), ("sr-02", 2, 1)]
+    assert "cited_page" in saved[0]["scores"] and "passed" not in saved[0]["scores"]
+
+    assert run_eval.main(["--questions", str(tmp_path), "--repetitions", "1", "--no-upload",
+                          "--no-judges", "--search-only", "--out", str(out_file)]) == 0
+    assert [r["id"] for r in summarize.load([out_file])] == ["sr-01"]  # sr-02 expects no tools

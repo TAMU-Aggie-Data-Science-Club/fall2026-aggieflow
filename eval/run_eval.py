@@ -20,11 +20,19 @@
      grades the answer instead), relevance, groundedness, retrieval_relevance
    - path metrics, numbers that never fail a task: rounds, tool_call_count, redundant_calls,
      tool_error_rate, hit_round_limit, recovered (recovery tasks)
+   - run metrics, also never failing a task: latency_s (the attempt that succeeded, without
+     rate-limit waits), fell_back (a vector or hybrid search fell back to keyword),
+     wrongly_not_sure (an answerable task said "not sure"), answered_out_of_scope (a NOT_SURE
+     task answered anyway)
    - passed: the run passes when every outcome grader that applies passes: cited_page or
      not_sure_correct, numbers_match or correctness, and tool_match. A judge's "unknown" doesn't count.
-4. Prints pass@1 (the average pass rate) and pass^k (passed all k runs) by source, set and tag.
+4. Prints pass@1 with a 95% CI (bootstrap over questions) and pass^k (passed all k runs) by
+   source, set and tag, plus latency p50/p95, fallbacks and refusal errors.
+5. Writes one JSON line per run to --out (default eval/results/<experiment>.jsonl).
+   eval/summarize.py merges several such files into one summary, and eval/compare.py compares
+   two experiments question by question.
 
-known-gap tasks are skipped. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
+known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
 unless --no-upload. Experiments are named <area>-<mode>-<commit>, e.g. agent-keyword-284cec7.
 """
 
@@ -47,6 +55,8 @@ DATASET = "aggieflow-questions"
 MODES = ("keyword", "vector", "hybrid")
 GRADE_TOOLS = {"get_course_grades", "get_professor_grades"}
 NOT_SURE = score.NOT_SURE
+RESULTS = ROOT / "eval" / "results"
+BOOTSTRAP = 2000  # resamples for the 95% CIs
 
 
 # --- tasks and the dataset ----------------------------------------------------
@@ -66,6 +76,11 @@ def load_tasks(path: Path = score.QUESTIONS) -> list[dict]:
             if not score.is_known_gap(q):
                 tasks.append({**q, "source": source_of(file)})
     return tasks
+
+
+def is_search_task(task: dict) -> bool:
+    """Search mode only changes tasks whose expected tools include a search_* tool."""
+    return any(t.startswith("search_") for t in task.get("tools") or [])
 
 
 def example_fields(task: dict) -> dict:
@@ -238,6 +253,11 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
         results[name] = (r["score"], r.get("comment", ""))
     for key, value in path_metrics(outputs.get("calls", []), meta.get("tags") or [], max_rounds).items():
         results[key] = (value, "")
+    results["latency_s"] = (outputs.get("latency_s"), "seconds, without rate-limit waits")
+    results["fell_back"] = (outputs.get("fell_back"), "a search fell back to keyword")
+    results["wrongly_not_sure"] = (None, "NOT_SURE task") if expects_not_sure else (int(said_not_sure), "")
+    results["answered_out_of_scope"] = ((int(not said_not_sure), "") if expects_not_sure else
+                                        (None, "answerable task"))
 
     gates = ["not_sure_correct" if expects_not_sure else "cited_page",
              "numbers_match" if grade_task else "correctness", "tool_match"]
@@ -255,39 +275,92 @@ def make_evaluator(judges, max_rounds: int, questions_by_id: dict):
     return evaluate_run
 
 
-# --- summary ----------------------------------------------------------------------
+# --- results and summary -----------------------------------------------------------
 
-def summarize(rows: list[dict]) -> dict:
-    """{"passed": {example_id: [0/1 per run]}, "groups": {group: [example ids]}, "means": {key: avg}}"""
-    passed, groups, values = defaultdict(list), defaultdict(set), defaultdict(list)
+def records(rows, run_info: dict) -> list[dict]:
+    """One dict per run, the --out format: run_info (experiment, commit, model, mode, setup), the
+    task's id, source, set and tags, which repetition it was, passed, and every other score."""
+    reps, out = defaultdict(int), []
     for row in rows:
         example = row["example"]
         meta = example.metadata
-        results = {r.key: r.score for r in row["evaluation_results"]["results"]}
-        passed[example.id].append(results.get("passed", 0) or 0)
-        for group in ["all", f"source={meta.get('source')}", f"set={meta.get('set') or 'unset'}",
-                      *(f"tag={t}" for t in meta.get("tags") or [])]:
-            groups[group].add(example.id)
-        for key, s in results.items():
-            if s is not None and key != "passed":
+        reps[example.id] += 1
+        scores = {r.key: r.score for r in row["evaluation_results"]["results"]}
+        out.append({**run_info, "id": meta.get("id"), "source": meta.get("source"), "set": meta.get("set"),
+                    "tags": meta.get("tags") or [], "repetition": reps[example.id],
+                    "passed": scores.pop("passed", 0) or 0, "scores": scores})
+    return out
+
+
+def write_records(path: Path, recs: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in recs:
+            f.write(json.dumps(r) + "\n")
+
+
+def summarize(recs: list[dict]) -> dict:
+    """{"passed": {task id: [0/1 per run]}, "groups": {group: {task ids}}, "values": {key: [scores]},
+    "modes": {modes seen}}"""
+    passed, groups, values = defaultdict(list), defaultdict(set), defaultdict(list)
+    for r in recs:
+        passed[r["id"]].append(r["passed"])
+        for group in ["all", f"source={r.get('source')}", f"set={r.get('set') or 'unset'}",
+                      *(f"tag={t}" for t in r.get("tags") or [])]:
+            groups[group].add(r["id"])
+        for key, s in r["scores"].items():
+            if s is not None:
                 values[key].append(float(s))
-    means = {k: sum(v) / len(v) for k, v in sorted(values.items())}
-    return {"passed": passed, "groups": groups, "means": means}
+    return {"passed": passed, "groups": groups, "values": values, "modes": {r.get("mode") for r in recs}}
+
+
+def pass_rate(passed: dict, ids) -> tuple[float, float, float]:
+    """pass@1 over these tasks and its 95% CI, resampling tasks (each task's runs stay together)."""
+    from retrieval import bootstrap_ci
+
+    rates = [sum(passed[i]) / len(passed[i]) for i in sorted(ids)]
+    low, high = bootstrap_ci(rates, resamples=BOOTSTRAP, seed=0)
+    return sum(rates) / len(rates), low, high
+
+
+def percentile(values: list[float], p: float) -> float:
+    """Nearest-rank percentile: the smallest value with at least p of the values at or below it."""
+    import math
+
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(p * len(ordered)) - 1)]
 
 
 def print_summary(summary: dict) -> None:
-    passed = summary["passed"]
+    passed, values = summary["passed"], summary["values"]
     k = max((len(runs) for runs in passed.values()), default=0)
-    print(f"\n{'group':<28} {'tasks':>5} {'pass@1':>7} {'pass^' + str(k):>7}")
+    header = f"\n{'group':<28} {'tasks':>5} {'pass@1':>7}  {'95% CI':<12}"
+    print(header + (f" {'pass^' + str(k):>7}" if k > 1 else ""))
     order = sorted(summary["groups"], key=lambda g: (g != "all", g.split("=")[0], g))
     for group in order:
         ids = summary["groups"][group]
-        at1 = sum(sum(passed[i]) / len(passed[i]) for i in ids) / len(ids)
-        all_k = sum(all(passed[i]) for i in ids) / len(ids)
-        print(f"{group:<28} {len(ids):>5} {at1:>7.0%} {all_k:>7.0%}")
+        at1, low, high = pass_rate(passed, ids)
+        line = f"{group:<28} {len(ids):>5} {at1:>7.0%}  {f'[{low:.0%}, {high:.0%}]':<12}"
+        if k > 1:
+            line += f" {sum(all(passed[i]) for i in ids) / len(ids):>7.0%}"
+        print(line)
+    if k == 1:
+        print("(1 run per task: pass^k not measured)")
     print("\naverages (graders 0-1, metrics as numbers):")
-    for key, mean in summary["means"].items():
-        print(f"  {key:<20} {mean:.2f}")
+    for key in sorted(values):
+        print(f"  {key:<22} {sum(values[key]) / len(values[key]):.2f}")
+    latency = values.get("latency_s", [])
+    if latency:
+        print(f"\nlatency (s, without rate-limit waits): p50 {percentile(latency, 0.5):.1f}, "
+              f"p95 {percentile(latency, 0.95):.1f} over {len(latency)} runs")
+    fallbacks = int(sum(values.get("fell_back", [])))
+    print(f"fallbacks: {fallbacks} run(s) with a search that fell back to keyword")
+    if fallbacks and summary["modes"] - {"keyword"}:
+        print("  WARNING: a vector or hybrid experiment with fallbacks isn't valid for comparing search modes")
+    for key, label, kind in (("wrongly_not_sure", "false refusals", "answerable"),
+                             ("answered_out_of_scope", "false answers", "NOT_SURE")):
+        runs = values.get(key, [])
+        print(f"{label} ({key}): {int(sum(runs))} of {len(runs)} {kind} runs")
 
 
 # --- main -------------------------------------------------------------------------
@@ -299,11 +372,33 @@ def experiment_prefix(mode: str) -> str:
     return f"agent-{mode}-{commit.split()[0]}{'-dirty' if '+' in commit else ''}"
 
 
+def measured(answer, data, question: str, question_id: str, clock=None) -> dict:
+    """One attempt at answer(), plus latency_s and fell_back for that attempt alone. with_retry
+    calls this once per attempt, so neither counts time or searches from attempts that failed."""
+    import time
+
+    clock = clock or time.perf_counter
+    before, start = data.fallback_count, clock()
+    result = answer(question, metadata={"question_id": question_id})
+    return {**result, "latency_s": round(clock() - start, 3), "fell_back": int(data.fallback_count > before)}
+
+
 def answer_fn(question: str, question_id: str) -> dict:
     """The real agent, retrying rate limits. Tests replace this."""
+    from agent import data
     from agent.run import answer
 
-    return with_retry(answer, question, metadata={"question_id": question_id})
+    return with_retry(measured, answer, data, question, question_id)
+
+
+def run_info(mode: str, experiment: str) -> dict:
+    """What every --out line records about the run, so summarize.py and compare.py can refuse to
+    mix different commits, models or modes."""
+    from agent.graph import model_name
+    from agent.run import git_commit
+
+    return {"experiment": experiment, "commit": git_commit(), "model": model_name(), "mode": mode,
+            "setup": score.run_setup()}
 
 
 def main(argv=None) -> int:
@@ -315,6 +410,10 @@ def main(argv=None) -> int:
     parser.add_argument("--no-judges", action="store_true", help="skip the LLM judges (code graders only)")
     parser.add_argument("--no-upload", action="store_true",
                         help="run locally without LangSmith (no dataset, no experiment)")
+    parser.add_argument("--search-only", action="store_true",
+                        help="only tasks whose expected tools include a search_* tool (for comparing modes)")
+    parser.add_argument("--out", type=Path, metavar="PATH",
+                        help="one JSON line per run (default: eval/results/<experiment>.jsonl)")
     args = parser.parse_args(argv)
 
     from dotenv import load_dotenv
@@ -325,6 +424,8 @@ def main(argv=None) -> int:
     from langsmith import Client
 
     tasks = load_tasks(args.questions)
+    if args.search_only:
+        tasks = [t for t in tasks if is_search_task(t)]
     if not tasks:
         print(f"No tasks found at {args.questions}", file=sys.stderr)
         return 1
@@ -357,7 +458,11 @@ def main(argv=None) -> int:
     rows = list(results)
     if not args.no_upload:
         print(f"experiment: {results.experiment_name}")
-    print_summary(summarize(rows))
+    recs = records(rows, run_info(args.mode, results.experiment_name))
+    out = args.out or RESULTS / f"{results.experiment_name}.jsonl"
+    write_records(out, recs)
+    print(f"results: {out}")
+    print_summary(summarize(recs))
     return 0
 
 
