@@ -109,6 +109,7 @@ def _atlas_search(source: str, query: str, k: int) -> list[Passage]:
 
 VECTOR_INDEX = "passages_vector"  # embeds `text` with voyage-4; see pipeline/db/setup.py
 RRF_K = 60  # standard reciprocal rank fusion constant
+fallback_count = 0  # vector queries answered by keyword search instead; eval/retrieval.py checks it
 
 
 def _atlas_vector_search(source: str, query: str, k: int) -> list[Passage]:
@@ -139,6 +140,8 @@ def _atlas_vector_search(source: str, query: str, k: int) -> list[Passage]:
     except OperationFailure as err:
         if "rate limit" not in str(err).lower():
             raise
+        global fallback_count
+        fallback_count += 1
         log.warning("Atlas embedding rate limit hit; using keyword search for this query")
         return _atlas_search(source, query, k)
     return [p for p in found if not p["id"].startswith(COURSE_PREFIX)][:k]
