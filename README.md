@@ -42,9 +42,22 @@ Then open http://localhost:8000/docs to try `POST /chat` in the browser. Send `{
 
 To add a package, run `uv add <package>` and commit both `pyproject.toml` and `uv.lock`. More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-## Repo guide
- 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how we work, [`DELIVERABLES.md`](DELIVERABLES.md) for the timeline, [`DATA.md`](DATA.md) for data sources, and [`CODEOWNERS`](CODEOWNERS) for the team.
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Agent | LangGraph and LangChain, running Gemini 3.5 Flash Lite |
+| Search | MongoDB Atlas (free M0 cluster): keyword, vector (Voyage embeddings) and hybrid search |
+| Live data | Agent tools that call anex.us (grades) and RateMyProfessors at question time |
+| Data collection | Python collectors (`requests`, BeautifulSoup) |
+| API | FastAPI |
+| Frontend | React (coming next) |
+| Evaluation | LangSmith, with LLM judges running on Groq |
+| Tooling | uv for packages, pytest, GitHub Actions CI |
+
+## Testing
+
+Test-driven development was essential to keeping our agent reliable across iterations and in prod. The repo has 301 pytest tests: 171 offline and 130 live (these call real model APIs and run with `uv run pytest -m live`). The offline tests run on every pull request through GitHub Actions CI.
 
 ## Scope and limits
 
