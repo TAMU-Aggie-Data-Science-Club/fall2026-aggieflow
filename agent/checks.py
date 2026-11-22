@@ -3,12 +3,14 @@
 1. No sources gathered -> "I'm not sure".
 2. The model said it's not sure and cited nothing -> "I'm not sure", with no
    sources (it didn't use the passages it was given, so they aren't citations).
-3. A passage id cited in place of a link becomes that passage's link.
+3. A passage id, or a bare site name like (anex.us) when only one source is
+   from that site, cited in place of a link becomes that link.
    Any link in the answer that no tool returned is removed.
 4. A "Sources:" list is added. Live data says when it was fetched.
 """
 
 import re
+from urllib.parse import urlsplit
 
 from agent.state import Passage
 
@@ -20,6 +22,8 @@ NOT_SURE = (
 
 # Stops at brackets, quotes and the full-width 【】 some models (gpt-oss) wrap citations in.
 URL = re.compile(r"https?://[^\s)\]>\"'【】]+")
+
+BARE_SITE = re.compile(r"\(((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+)\)", re.IGNORECASE)
 
 
 def _clean(url: str) -> str:
@@ -50,6 +54,18 @@ def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
     if ids:
         url_of = {p["id"]: p["source_url"] for p in sources if p.get("source_url")}
         answer = re.sub("|".join(map(re.escape, ids)), lambda m: url_of[m.group(0)], answer)
+
+    # "(anex.us)": a bare site name becomes the link when only one source is from that site.
+    hosts: dict[str, set[str]] = {}
+    for url in by_url:
+        host = urlsplit(url).netloc.lower().removeprefix("www.")
+        hosts.setdefault(host, set()).add(url)
+
+    def site_to_link(match: re.Match) -> str:
+        urls = hosts.get(match.group(1).lower().removeprefix("www."), set())
+        return f"({next(iter(urls))})" if len(urls) == 1 else match.group(0)
+
+    answer = BARE_SITE.sub(site_to_link, answer)
 
     text = URL.sub(keep_or_drop, answer).strip()
 
