@@ -17,7 +17,8 @@ NOT_SURE = (
     "(https://student-rules.tamu.edu)."
 )
 
-URL = re.compile(r"https?://[^\s)\]>\"']+")
+# Stops at brackets, quotes and the full-width 【】 some models (gpt-oss) wrap citations in.
+URL = re.compile(r"https?://[^\s)\]>\"'【】]+")
 
 
 def _clean(url: str) -> str:

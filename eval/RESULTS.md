@@ -95,11 +95,11 @@ The last four are right answers that failed the strict `tool_match` rule.
 
 ## A bug the graders don't catch
 
-120b often puts citations in full-width brackets: `【https://…】`. The link regex in `agent/checks.py` doesn't stop at `】`, so it reads the bracket as part of the URL. The URL then doesn't match any source, and a real link gets replaced with `[link removed: not from a source]`. **12 of 36 answers** show that text to the student. The sources list added at the end is still correct, so `cited_page` passes and no grader caught it. Fix: add `【】` to the characters the `URL` regex stops at.
+120b often puts citations in full-width brackets: `【https://…】`. The link regex in `agent/checks.py` doesn't stop at `】`, so it reads the bracket as part of the URL. The URL then doesn't match any source, and a real link gets replaced with `[link removed: not from a source]`. **12 of 36 answers** show that text to the student. The sources list added at the end is still correct, so `cited_page` passes and no grader caught it. **Fixed in the same PR as this file:** the `URL` regex now stops at `【】`. The numbers above were measured before the fix, and since none of the graders read the inline links, the fix doesn't change them.
 
 ## Top 3 fixes
 
-1. **Citation links:** stop the `URL` regex at `【】` (the bug above, a one-line fix).
+1. **Citation links:** stop the `URL` regex at `【】` (the bug above; done in this PR).
 2. **Tool descriptions:** make `search_registrar` and `search_degree_plans` clearly own graduation, calendar and ICD/core questions. 5 failures started by searching Student Rules first.
 3. **Grade wording:** say in `get_course_grades`'s description (or the prompt) that "easiest" means the *highest* average GPA.
 

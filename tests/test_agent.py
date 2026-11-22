@@ -57,6 +57,13 @@ def test_link_not_from_a_source_is_removed():
     assert [p["source_url"] for p in cited] == [RULE["source_url"]]
 
 
+def test_link_in_full_width_brackets_is_kept():
+    text, cited = finalize("Four Q-drops【https://student-rules.tamu.edu/rule01/】.", [RULE])
+    assert "link removed" not in text
+    assert "【https://student-rules.tamu.edu/rule01/】" in text
+    assert [p["source_url"] for p in cited] == [RULE["source_url"]]
+
+
 def test_uncited_answer_still_lists_sources():
     text, cited = finalize("You get four.", [RULE])
     assert "Sources:" in text and RULE["source_url"] in text
