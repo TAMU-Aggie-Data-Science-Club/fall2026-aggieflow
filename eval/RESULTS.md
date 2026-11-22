@@ -8,7 +8,7 @@ setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), k
 
 That's 82% (33 of 40) from the full run, plus 4 questions rerun after fixes: 3 had wrong reference answers, and the garage question's data and decline rule changed. All 4 pass (see [Rerun](#rerun-after-fixes)). The 3 that still fail are right answers that broke the strict `tool_match` rule. The comparison with 3.6 Flash below uses the original 82%, since both models ran on the same questions.
 
-LangSmith experiments: `agent-keyword-69e9466-2c690832` (Flash Lite), `agent-keyword-69e9466-752f8042` (3.6 Flash). Command:
+LangSmith experiments (in the `aggieflow-questions` dataset): **Gemini 3.5 Flash Lite · 40 questions · keyword · 69e9466** and **Gemini 3.6 Flash · 40 questions · keyword · 69e9466**. Runs are named `agent-<mode>-<commit>-<id>` and then renamed in LangSmith to say what they are. Command:
 
 ```
 AGGIEFLOW_MODEL=google_genai:gemini-3.5-flash-lite uv run python eval/run_eval.py --ids eval/sample-40.txt --judges correctness --repetitions 1
@@ -75,14 +75,14 @@ So **1 real wrong answer**, a data problem, not the model, and now fixed. Three 
 
 ## Rerun after fixes
 
-Experiment `agent-keyword-4e20cf9-837f8dbf` (commit `4e20cf9`; the agent changed only by the passage-id link fix):
+Experiment **Gemini 3.5 Flash Lite · rerun 4 after reference fixes · 4e20cf9** (commit `4e20cf9`; the agent changed only by the passage-id link fix):
 
 | Question | Before | After |
 |---|---|---|
 | `extra-krishjayanth-31` | fail | **pass** |
 | `student-rules-kaushalp55-02` | fail | **pass** |
 | `transportation-krishjayanth-05` | fail | **pass** |
-| `transportation-krishjayanth-10` (garage) | fail: said "364 spots" | **pass**: says it's not sure and links parking pages (experiment `agent-keyword-4512eb2-10cb502a`) |
+| `transportation-krishjayanth-10` (garage) | fail: said "364 spots" | **pass**: says it's not sure and links parking pages (experiment **Gemini 3.5 Flash Lite · rerun garage question · 4512eb2**) |
 
 **Rule change (decided on #89):** a "not sure" answer that links related pages now counts as declining. Before, it had to cite nothing. This changes no other question in either Gemini run. The garage question also goes back to its file's default tool (`search_transportation`), since searching before declining is reasonable here.
 
