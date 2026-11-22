@@ -372,3 +372,28 @@ def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
     assert run_eval.main(["--questions", str(tmp_path), "--repetitions", "1", "--no-upload",
                           "--no-judges", "--search-only", "--out", str(out_file)]) == 0
     assert [r["id"] for r in summarize.load([out_file])] == ["sr-01"]  # sr-02 expects no tools
+
+
+def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
+    rows = [{"id": f"sr-0{i}", "question": f"q{i}", "answer": "x", "source_url": RULE01} for i in (1, 2, 3)]
+    (tmp_path / "student-rules-test.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n",
+                                                       encoding="utf-8")
+    ids = tmp_path / "ids.txt"
+    ids.write_text("# sample\nsr-01\n\nsr-03  # last\n", encoding="utf-8")
+    seen = []
+
+    def fake_answer(question, question_id):
+        seen.append(question_id)
+        return {"answer": "x", "sources": [], "documents": [], "calls": [], "trace": []}
+
+    monkeypatch.setattr(run_eval, "answer_fn", fake_answer)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")
+    args = ["--questions", str(tmp_path), "--repetitions", "1", "--no-upload", "--no-judges",
+            "--out", str(tmp_path / "run.jsonl"), "--ids", str(ids)]
+    assert run_eval.main(args) == 0
+    assert sorted(seen) == ["sr-01", "sr-03"]
+
+    ids.write_text("sr-01\nsr-09\n", encoding="utf-8")
+    assert run_eval.main(args) == 1
+    assert "sr-09" in capsys.readouterr().err

@@ -32,7 +32,8 @@
    eval/summarize.py merges several such files into one summary, and eval/compare.py compares
    two experiments question by question.
 
-known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
+known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool; --ids
+keeps only the ids listed in a file (one per line, # comments allowed), e.g. eval/sample-40.txt. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
 unless --no-upload. Experiments are named <area>-<mode>-<commit>, e.g. agent-keyword-284cec7.
 """
 
@@ -76,6 +77,12 @@ def load_tasks(path: Path = score.QUESTIONS) -> list[dict]:
             if not score.is_known_gap(q):
                 tasks.append({**q, "source": source_of(file)})
     return tasks
+
+
+def read_ids(path: Path) -> list[str]:
+    """Question ids from a file: one per line; blank lines and # comments are ignored."""
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return [line for line in lines if line]
 
 
 def is_search_task(task: dict) -> bool:
@@ -433,6 +440,8 @@ def main(argv=None) -> int:
                         help="only tasks whose expected tools include a search_* tool (for comparing modes)")
     parser.add_argument("--out", type=Path, metavar="PATH",
                         help="one JSON line per run (default: eval/results/<experiment>.jsonl)")
+    parser.add_argument("--ids", type=Path, metavar="FILE",
+                        help="only these question ids, one per line (e.g. eval/sample-40.txt)")
     args = parser.parse_args(argv)
 
     from dotenv import load_dotenv
@@ -445,6 +454,13 @@ def main(argv=None) -> int:
     tasks = load_tasks(args.questions)
     if args.search_only:
         tasks = [t for t in tasks if is_search_task(t)]
+    if args.ids:
+        wanted = read_ids(args.ids)
+        missing = sorted(set(wanted) - {t["id"] for t in tasks})
+        if missing:
+            print(f"Not in {args.questions} (or known-gap / filtered out): {', '.join(missing)}", file=sys.stderr)
+            return 1
+        tasks = [t for t in tasks if t["id"] in set(wanted)]
     if not tasks:
         print(f"No tasks found at {args.questions}", file=sys.stderr)
         return 1

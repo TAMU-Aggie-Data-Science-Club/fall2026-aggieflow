@@ -1,0 +1,53 @@
+# 40-question sample for the #89 results run (one person, one free Groq key).
+# Picked by hand to cover every source file, both sets, every tag, NOT_SURE and grade
+# questions, the 8 tasks #92 fixed, and the agent failures #92 left for #74.
+# Left out: catalog-aguw0kie124-04, -05 and student-rules-rushilsagar-05, which are too
+# large for the free tier's 8K-a-minute limit (#87).
+
+# anex (grades, ratings)
+anex-rushilsagar-01
+anex-rushilsagar-03
+anex-rushilsagar-09
+anex-rushilsagar-10
+# catalog
+catalog-aguw0kie124-01
+catalog-aguw0kie124-03
+catalog-aguw0kie124-07
+catalog-aguw0kie124-10
+# oal (tech help)
+oal-klee-SAM-03
+oal-klee-SAM-04
+oal-klee-SAM-09
+oal-klee-SAM-12
+# registrar
+registrar-aaronj59-02
+registrar-aaronj59-07
+registrar-aaronj59-10
+registrar-01
+registrar-06
+registrar-08
+# student rules
+student-rules-kaushalp55-02
+student-rules-kaushalp55-05
+student-rules-kaushalp55-08
+student-rules-rafperez010-04
+student-rules-rafperez010-07
+student-rules-rafperez010-10
+student-rules-rushilsagar-01
+student-rules-rushilsagar-09
+# transportation
+transportation-krishjayanth-01
+transportation-krishjayanth-05
+transportation-krishjayanth-08
+transportation-krishjayanth-10
+# extra: no-tool, multi-tool, recovery, paraphrase, shorthand
+extra-krishjayanth-01
+extra-krishjayanth-08
+extra-krishjayanth-09
+extra-krishjayanth-34
+extra-krishjayanth-13
+extra-krishjayanth-15
+extra-krishjayanth-17
+extra-krishjayanth-31
+extra-krishjayanth-25
+extra-krishjayanth-37
