@@ -28,6 +28,8 @@ The model and the fixes changed together, so these results don't show how much t
 - **1 run per question.** pass^3 and flaky questions weren't measured.
 - **Only the `correctness` judge.** It's the only judge in the pass rule, so `passed` is the same. `relevance`, `groundedness` and `retrieval_relevance` weren't measured.
 
+**Every answer:** [`eval/flash-lite-40.csv`](flash-lite-40.csv) has one row per question: the question, the expected and actual answer, pages cited, tools called, every score and the latency. It's the full run, with the 4 reruns swapped in. Open it in Excel or Google Sheets and filter on `passed`.
+
 ## The two Gemini models
 
 From `eval/compare.py --allow-setup-change`, paired over the same 40 questions:
@@ -93,6 +95,27 @@ Both citation bugs are fixed in code, and neither changes the scores, because th
 - **`【】` links (120b):** the link regex read `】` as part of the URL, so a real link became `[link removed: not from a source]` in 12 of 36 answers. Fixed.
 - **Passage ids as citations (Flash Lite):** 7 of 34 answers cite `(student-rules:rule10:13)` instead of a link. `agent/checks.py` now swaps a known passage id for its URL. Fixed.
 
+- **Answers without inline links (Flash Lite, not fixed):** 15 of 33 answers cite nothing inline, or only a bare domain like `(anex.us)`. When an answer cites nothing, the check lists *every* page the search returned, including unrelated news pages (example A below). `cited_page` still passes, because the expected page is among them. Possible fixes: a firmer citation rule in the system prompt, or listing only the pages the answer used.
+
+## Example traces
+
+Taken from the LangSmith experiments above; the full rows are in the CSV.
+
+**A. Pass: "how do i get my laptop, xbox and tv all online in my room at the commons"** (2.7 s)
+- Tool: `search_tech_help("The Commons wireless device gaming console smart TV laptop internet")`. It returned 5 pages, including On-Campus Resident Resources.
+- Answer: TAMU_WiFi for the laptop, or Ethernet through ResNet; TAMU_IoT for the Xbox and TV, with the 4 registration steps; and a router only if its wireless can be turned off.
+- Scores: `cited_page` 1, `correctness` 1, `tool_match` 1. The weakness: there are no inline links, so the sources list includes 2 unrelated news pages.
+
+**B. Fail, though the answer was right: "is professor kim a good teacher for math 151"** (2.3 s)
+- Tools: `get_course_grades("MATH 151")`, then `get_professor_ratings("Kim")`.
+- Answer: Yes, JD Kim is rated 4.7/5 and over 90% would take him again, plus his 3.18 average GPA in the course.
+- Scores: `correctness` 1, `cited_page` 1, **`tool_match` 0**. The expected tool was only `get_professor_ratings`, and the extra grades call fails the strict rule even though it made the answer better.
+
+**C. Fail, a real wrong answer: "how many open spots are in west campus garage right now"** (1.0 s)
+- Tool: `search_transportation("west campus garage open spots")`. One result was the collected snapshot of the real-time garage page.
+- Answer: "There are 364 open spots in the West Campus Garage", a number from two days earlier.
+- Scores: `correctness` 0, `not_sure_correct` 0. Fixed by removing the page. The rerun says it's not sure and passes.
+
 ## Cost
 
 About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a cent, so $10 in credits covers thousands of questions. Groq's free tier is only used for the judges.
@@ -100,5 +123,4 @@ About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a c
 ## Still to do
 
 - ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas.
-- Post Share links for a passing and a failing trace (LangSmith → Share).
 - Next: #76 (vector vs keyword on Flash Lite) and #74 (failure review) build on this run.
