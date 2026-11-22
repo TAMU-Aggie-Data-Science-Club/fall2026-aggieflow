@@ -1,9 +1,10 @@
-// Renders an agent answer: paragraphs, "* " / "- " / "1. " lists, **bold**, and bare URLs
-// as links that open in a new tab. Built from React elements (never innerHTML), so
-// nothing in an answer can inject markup.
+// Renders an agent answer: paragraphs, "# " headings, "* " / "- " / "1. " lists, **bold**,
+// *italic*, and bare URLs as links that open in a new tab. Built from React elements
+// (never innerHTML), so nothing in an answer can inject markup.
 
 const URL_RE = /https?:\/\/[^\s<>()"']+[^\s<>()"'.,;:!?]/g;
-const BOLD_RE = /\*\*(.+?)\*\*/g;
+// **bold**, or *italic* (single asterisks that hug their text, not part of a word or of **)
+const EMPHASIS_RE = /\*\*(.+?)\*\*|(?<![*\w])\*(?![\s*])([^*]+?)(?<![\s*])\*(?![*\w])/g;
 
 function withLinks(text, keyPrefix) {
   const parts = [];
@@ -24,9 +25,16 @@ function withLinks(text, keyPrefix) {
 function inline(text, keyPrefix) {
   const parts = [];
   let last = 0;
-  for (const match of text.matchAll(BOLD_RE)) {
+  for (const match of text.matchAll(EMPHASIS_RE)) {
     if (match.index > last) parts.push(...withLinks(text.slice(last, match.index), `${keyPrefix}-${last}`));
-    parts.push(<strong key={`${keyPrefix}-b${match.index}`}>{withLinks(match[1], `${keyPrefix}-b${match.index}`)}</strong>);
+    const key = `${keyPrefix}-e${match.index}`;
+    parts.push(
+      match[1] !== undefined ? (
+        <strong key={key}>{withLinks(match[1], key)}</strong>
+      ) : (
+        <em key={key}>{withLinks(match[2], key)}</em>
+      ),
+    );
     last = match.index + match[0].length;
   }
   if (last < text.length) parts.push(...withLinks(text.slice(last), `${keyPrefix}-${last}`));
@@ -35,14 +43,17 @@ function inline(text, keyPrefix) {
 
 const BULLET = /^\s*[*-]\s+/;
 const NUMBERED = /^\s*\d+[.)]\s+/;
+const HEADING = /^\s*#{1,6}\s+/;
 
-/** Group lines into paragraphs and lists. */
+/** Group lines into paragraphs, headings and lists. */
 function blocks(text) {
   const out = [];
   for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
-    const kind = BULLET.test(line) ? "ul" : NUMBERED.test(line) ? "ol" : line.trim() ? "p" : "gap";
+    const kind = HEADING.test(line) ? "h" : BULLET.test(line) ? "ul" : NUMBERED.test(line) ? "ol" : line.trim() ? "p" : "gap";
     const prev = out[out.length - 1];
-    if (kind === "gap") {
+    if (kind === "h") {
+      out.push({ kind, lines: [line.replace(HEADING, "").trim()], closed: true });
+    } else if (kind === "gap") {
       if (prev) prev.closed = true;
     } else if (kind === "p") {
       if (prev && prev.kind === "p" && !prev.closed) prev.lines.push(line.trim());
@@ -60,6 +71,13 @@ export default function AnswerText({ text }) {
   return (
     <div className="answer-text">
       {blocks(text).map((block, i) => {
+        if (block.kind === "h") {
+          return (
+            <p key={i} className="answer-heading">
+              <strong>{inline(block.lines[0], `${i}`)}</strong>
+            </p>
+          );
+        }
         if (block.kind === "p") {
           return (
             <p key={i}>
