@@ -329,6 +329,16 @@ def test_compare_main_refuses_different_commits(tmp_path, capsys):
     assert "B wins 0, loses 1, ties 0" in capsys.readouterr().out
 
 
+def test_compare_allows_a_model_or_commit_change_when_asked(tmp_path, capsys):
+    a = write(tmp_path / "a.jsonl", [record("q1", 0)])
+    b = write(tmp_path / "b.jsonl", [{**record("q1", 1, commit="def5678"), "model": "google_genai:x"}])
+    assert compare.main([str(a), str(b)]) == 1
+    assert "--allow-setup-change" in capsys.readouterr().err
+    assert compare.main([str(a), str(b), "--allow-setup-change"]) == 0
+    out = capsys.readouterr().out
+    assert "google_genai:x" in out and "B wins 1, loses 0, ties 0" in out
+
+
 # --- end to end, locally ----------------------------------------------------------
 
 def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
