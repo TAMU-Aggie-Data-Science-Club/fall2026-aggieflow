@@ -6,6 +6,8 @@ setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), k
 
 **The agent (Gemini 3.5 Flash Lite, keyword search) passes 95% (38 of 40), 95% CI [88%, 100%], with a typical answer in 1.3 seconds.** Both failures are right answers that made an extra tool call. No answer in the sample is wrong.
 
+**It's consistent too: pass^3 is 95%.** Run 3 times each, every question gave the same result all 3 times. No question is flaky (see [Reliability](#reliability-pass3)).
+
 **Every answer:** [`eval/flash-lite-40.csv`](flash-lite-40.csv) has one row per question: the question, the expected and actual answer, pages cited, tools called, every score, the latency and the experiment it came from. Open it in Excel or Google Sheets and filter on `passed`.
 
 LangSmith experiments, in the `aggieflow-questions` dataset:
@@ -37,7 +39,7 @@ The model and the fixes changed together, so these numbers don't show how much e
 ## What's different from the plan in #89
 
 - **40 questions, not 127.** `eval/sample-40.txt` covers every source file and tag, `NOT_SURE` and grade questions, the tasks #92 fixed, and the failures #92 left for #74.
-- **1 run per question.** pass^3 and flaky questions weren't measured.
+- **pass^3 without the judge.** The headline is 1 run per question, with the judge. The 3-run check used the code graders only (see [Reliability](#reliability-pass3)).
 - **Only the `correctness` judge.** It's the only judge in the pass rule, so `passed` is the same. `relevance`, `groundedness` and `retrieval_relevance` weren't measured.
 - **Decline rule (decided on #89):** a "not sure" answer that links related pages counts as declining. Before, it had to cite nothing.
 
@@ -58,6 +60,22 @@ From the `c16110e` run, before the 3 reruns, so these slightly understate the cu
 **The 2 failures**, both right answers that failed the strict `tool_match` rule:
 - `anex-rushilsagar-10` ("is professor kim a good teacher"): also pulled MATH 151 grades, which made the answer better.
 - `student-rules-kaushalp55-05` (withdrawing after Q-drop day): searched Registrar as well as Student Rules.
+
+## Reliability (pass^3)
+
+The 40 questions, 3 runs each, with code graders only (`cited_page`, `tool_match`, `numbers_match`, `not_sure_correct`; no judge). Commit `aa05068`, with the same agent as `fb3e7f6`. Experiment: **Gemini 3.5 Flash Lite · 40 questions × 3 (pass^3) · no judge · aa05068**.
+
+| | Result |
+|---|---|
+| pass@1 | 95% [88%, 100%] |
+| **pass^3** (passed all 3 runs) | **95%** |
+| Flaky questions (passed 1 or 2 of 3) | **0** |
+| Same tool calls in all 3 runs | 39 of 40 |
+| Identical answer wording in all 3 runs | 11 of 40 |
+| Said "not sure" on an answerable question / answered a `NOT_SURE` question | 0 of 99 / 0 of 21 |
+| Latency p50 / p95 | 1.2 s / 2.1 s |
+
+The same 2 questions fail every time: `anex-rushilsagar-10` and `student-rules-kaushalp55-05`, both for an extra tool call. The wording changes from run to run even at temperature 0 (Gemini isn't fully deterministic), but the facts, links and scores don't. The one question whose tool calls changed ("my grandpa passed away…") searched Student Rules twice in one run and still passed.
 
 ## The two Gemini models
 
@@ -146,6 +164,6 @@ About 5K tokens per question: a fraction of a cent on paid Gemini Flash Lite, so
 
 ## Not measured
 
-- **pass^3:** 1 run per question.
+- **pass^3 with the judge:** the 3-run check used code graders only.
 - **Judges outside the pass rule:** `relevance`, `groundedness`, `retrieval_relevance`.
 - **The rest of #76:** see above. #74 (failure review) can build on this file's failure list.
