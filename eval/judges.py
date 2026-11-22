@@ -10,8 +10,8 @@ Each judge checks one thing and has the shape LangSmith's evaluate() accepts:
 
 score is 1 (yes), 0 (no) or None (the judge couldn't tell); comment is its reasoning.
 
-The judge model is Qwen, not the agent's gpt-oss-20b, so the agent doesn't grade
-itself. (gpt-oss-120b was tried first, but a calibration run used up most of its
+The judge model is Qwen, not the agent's Gemini model, so the agent doesn't grade
+itself. (gpt-oss-120b was tried as the judge first, but a calibration run used up most of its
 200k-token daily limit on Groq's free tier.) Check the judges against your own labels with eval/calibrate.py.
 """
 

@@ -109,14 +109,14 @@ class ScoreTest(unittest.TestCase):
         self.assertEqual(counts["cited"], 0)
         self.assertEqual(counts["wrongly_not_sure"], 0)
 
-    def test_not_sure_that_still_cites_a_source_is_not_correct(self):
-        # The agent's round-limit fallback says "I'm not sure." but lists what it found.
+    def test_not_sure_that_still_lists_pages_is_correct(self):
+        # "I'm not sure, but see these pages" still declines (decided in #89).
         counts, _ = self.score_quietly(answers({
             "how many q drops do i get": {"answer": "Four.", "sources": [passage(RULE01)]},
             "when is a doctors note due": {"answer": "Three days.", "sources": [passage(RULE07)]},
             "how much is a parking permit": {"answer": "I'm not sure.", "sources": [passage(RULE01)]},
         }))
-        self.assertEqual(counts["not_sure_correct"], 0)
+        self.assertEqual(counts["not_sure_correct"], 1)
 
     def test_confident_answer_to_not_sure_question_is_not_correct(self):
         counts, _ = self.score_quietly(answers({

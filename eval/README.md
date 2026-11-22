@@ -60,7 +60,7 @@ Questions copied from a page share its words, which makes keyword search look be
 | `groundedness` | whether every claim is in the retrieved passages. The agent's standard "I'm not sure" answer counts as grounded with no LLM call; a hedged answer is still judged. |
 | `retrieval_relevance` | whether the retrieved passages answer the question. With no passages, the score is `None`. |
 
-The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a different model family from the agent's `gpt-oss-20b`. If you change it, calibrate again.
+The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a different model family from the agent's Gemini. If you change it, calibrate again.
 
 **Calibrate before you trust them:**
 
@@ -79,7 +79,7 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
 - **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. New ids are added, and an edited question's example is updated to match. `known-gap` tasks are skipped.
 - **Code graders** (1 or 0):
   - `cited_page`
-  - `not_sure_correct`
+  - `not_sure_correct`: a `NOT_SURE` task's answer says "not sure". Linking related pages is fine.
   - `tool_match`
   - `numbers_match`, on grade tasks (expected tools include `get_course_grades` or `get_professor_grades`). Every number the answer states must match the reference or the passages it retrieved: GPA to 2 decimals, % within 1 point, counts within 1%. It must also name the reference's first professor. A short answer passes; a wrong or made-up number fails.
 - **LLM judges:** the four above. `correctness` is skipped on grade tasks, where `numbers_match` grades the answer.
@@ -101,6 +101,8 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
   - `--questions <file>` runs one file.
   - `--search-only` keeps only tasks whose expected tools include a `search_*` tool. Those are the only tasks the search mode can change.
   - `--no-judges` uses the code graders only.
+  - `--judges correctness` runs only the named judges (comma-separated). `correctness` is the only judge in the pass rule, so this keeps `passed` the same while using a quarter of the judge tokens.
+  - `--ids eval/sample-40.txt` runs only the question ids listed in a file (one per line, `#` comments allowed).
   - `--no-upload` runs locally without a LangSmith key.
 - **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
 

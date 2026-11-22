@@ -202,7 +202,7 @@ def score(questions: list[dict], answer_fn) -> dict:
             print(f"{q['id']}: error: {type(err).__name__}: {err}", file=sys.stderr)
             continue
         if expects_not_sure:
-            if said_not_sure and not sources:
+            if said_not_sure:  # links to related pages are fine
                 counts["not_sure_correct"] += 1
         else:
             if accepted_urls(q) & cited:

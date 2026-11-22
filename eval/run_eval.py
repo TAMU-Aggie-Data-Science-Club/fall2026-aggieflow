@@ -10,7 +10,7 @@
 3. Grades every run (one evaluator, so each LLM judge runs once per run):
    - code graders, 1 or 0:
      cited_page        an answerable task cites its source_url (or an also_accept page)
-     not_sure_correct  a NOT_SURE task says "not sure" and cites nothing
+     not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine)
      tool_match        it called tools only from the task's "tools" (and none if that's [])
      numbers_match     grade tasks only: every number the answer states matches the reference or
                        the passages it retrieved (GPA to 2 decimals, % within 1 point, counts within
@@ -32,7 +32,8 @@
    eval/summarize.py merges several such files into one summary, and eval/compare.py compares
    two experiments question by question.
 
-known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
+known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool; --ids
+keeps only the ids listed in a file (one per line, # comments allowed), e.g. eval/sample-40.txt. Needs GOOGLE_API_KEY (agent), GROQ_API_KEY (judges) and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
 unless --no-upload. Experiments are named <area>-<mode>-<commit>, e.g. agent-keyword-284cec7.
 """
 
@@ -76,6 +77,12 @@ def load_tasks(path: Path = score.QUESTIONS) -> list[dict]:
             if not score.is_known_gap(q):
                 tasks.append({**q, "source": source_of(file)})
     return tasks
+
+
+def read_ids(path: Path) -> list[str]:
+    """Question ids from a file: one per line; blank lines and # comments are ignored."""
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return [line for line in lines if line]
 
 
 def is_search_task(task: dict) -> bool:
@@ -160,6 +167,7 @@ def with_retry(fn, *args, tries=8, wait=15, sleep=None, **kwargs):
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(\s?%|\s?percent)?", re.IGNORECASE)
 _PROFESSOR = re.compile(r"\b([A-Z]{2,}(?:[-'][A-Z]+)?) [A-Z]{1,2}\b(?![a-z\d])")
 _URL = re.compile(r"https?://\S+")
+_LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)  # "1. Martinez": a list item, not a claim
 
 
 def numbers_in(text: str) -> list[tuple[str, float]]:
@@ -174,8 +182,8 @@ def numbers_in(text: str) -> list[tuple[str, float]]:
 
 
 def claims(answer: str) -> str:
-    """The answer without its Sources list and links, whose dates and query numbers aren't claims."""
-    return _URL.sub(" ", answer.split("\nSources:")[0])
+    """The answer without its Sources list, links and list numbering, which aren't claims."""
+    return _LIST_MARKER.sub(" ", _URL.sub(" ", answer.split("\nSources:")[0]))
 
 
 def _number_matches(kind: str, value: float, known) -> bool:
@@ -250,7 +258,8 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     results = {
         "cited_page": (None, "NOT_SURE task") if expects_not_sure else
         (int(bool(score.accepted_urls(reference) & cited)), f"cited {sorted(cited)}"),
-        "not_sure_correct": (int(said_not_sure and not cited), "") if expects_not_sure else
+        # Declining counts even with links attached ("not sure, but see these pages").
+        "not_sure_correct": (int(said_not_sure), "") if expects_not_sure else
         (None, "answerable task"),
         "tool_match": (None, "no expected tools") if expected is None else
         (int(set(called) <= set(expected) and bool(called) == bool(expected)),
@@ -427,12 +436,16 @@ def main(argv=None) -> int:
     parser.add_argument("--questions", type=Path, default=score.QUESTIONS,
                         help="a .jsonl file or a folder of them (default: eval/questions)")
     parser.add_argument("--no-judges", action="store_true", help="skip the LLM judges (code graders only)")
+    parser.add_argument("--judges", metavar="NAMES",
+                        help="comma-separated judges to run (default: all), e.g. correctness")
     parser.add_argument("--no-upload", action="store_true",
                         help="run locally without LangSmith (no dataset, no experiment)")
     parser.add_argument("--search-only", action="store_true",
                         help="only tasks whose expected tools include a search_* tool (for comparing modes)")
     parser.add_argument("--out", type=Path, metavar="PATH",
                         help="one JSON line per run (default: eval/results/<experiment>.jsonl)")
+    parser.add_argument("--ids", type=Path, metavar="FILE",
+                        help="only these question ids, one per line (e.g. eval/sample-40.txt)")
     args = parser.parse_args(argv)
 
     from dotenv import load_dotenv
@@ -445,6 +458,13 @@ def main(argv=None) -> int:
     tasks = load_tasks(args.questions)
     if args.search_only:
         tasks = [t for t in tasks if is_search_task(t)]
+    if args.ids:
+        wanted = read_ids(args.ids)
+        missing = sorted(set(wanted) - {t["id"] for t in tasks})
+        if missing:
+            print(f"Not in {args.questions} (or known-gap / filtered out): {', '.join(missing)}", file=sys.stderr)
+            return 1
+        tasks = [t for t in tasks if t["id"] in set(wanted)]
     if not tasks:
         print(f"No tasks found at {args.questions}", file=sys.stderr)
         return 1
@@ -455,6 +475,14 @@ def main(argv=None) -> int:
         from judges import JUDGES
 
         judges = JUDGES
+        if args.judges:
+            by_name = {j.__name__: j for j in JUDGES}
+            names = [n.strip() for n in args.judges.split(",") if n.strip()]
+            unknown = [n for n in names if n not in by_name]
+            if unknown:
+                print(f"Unknown judges: {', '.join(unknown)} (have {', '.join(by_name)})", file=sys.stderr)
+                return 1
+            judges = [by_name[n] for n in names]
 
     def target(inputs: dict) -> dict:
         return answer_fn(inputs["question"], ids.get(inputs["question"], ""))
@@ -472,7 +500,7 @@ def main(argv=None) -> int:
         evaluators=[make_evaluator(judges, MAX_ROUNDS, {t["id"]: t["question"] for t in tasks})],
         num_repetitions=args.repetitions, experiment_prefix=prefix, max_concurrency=1,
         upload_results=not args.no_upload,
-        metadata={"mode": args.mode, "repetitions": args.repetitions, "judges": bool(judges)},
+        metadata={"mode": args.mode, "repetitions": args.repetitions, "judges": [j.__name__ for j in judges]},
     )
     rows = list(results)
     if not args.no_upload:

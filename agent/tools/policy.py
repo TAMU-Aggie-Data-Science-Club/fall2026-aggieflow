@@ -15,16 +15,18 @@ from agent.state import Passage
 def search_student_rules(query: str) -> list[Passage]:
     """Search the Texas A&M Student Rules: Q-drops, excused absences and
     make-up work, grading and grade notations, final exams, academic standing,
-    student conduct and campus behavior rules. Not for registration dates or
-    deadlines (use search_registrar)."""
+    student conduct and campus behavior rules (animals in buildings, skateboards).
+    Not for dates or deadlines, including the Q-drop deadline, or for graduation
+    ceremonies (use search_registrar)."""
     return data.search("student-rules", query)
 
 
 @tool
 def search_registrar(query: str) -> list[Passage]:
     """Search the Registrar's pages: registration, the academic calendar and
-    deadlines, transcripts, enrollment verification, graduation and diplomas,
-    residency and records. Not for the rules themselves, like how many Q-drops
+    deadlines (add/drop, Q-drop, withdrawal, finals), transcripts, enrollment
+    verification, graduation, commencement ceremonies (tickets, guests, Reed
+    Arena) and diplomas, residency and records. Not for the rules themselves, like how many Q-drops
     you get (use search_student_rules)."""
     return data.search("registrar", query)
 
@@ -40,8 +42,9 @@ def search_tech_help(query: str) -> list[Passage]:
 @tool
 def search_degree_plans(query: str) -> list[Passage]:
     """Search the Texas A&M catalog for degree plans and program requirements,
-    majors, minors and certificates, the core curriculum, and catalog-wide
-    academic policies. Not for one course's description or prerequisites
+    majors, minors and certificates, the core curriculum, the International and
+    Cultural Diversity (ICD) and Cultural Discourse (CD) lists and which courses
+    count for them, and catalog-wide academic policies. Not for one course's description or prerequisites
     (use get_course)."""
     return data.search("catalog", query)
 

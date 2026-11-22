@@ -57,6 +57,30 @@ def test_link_not_from_a_source_is_removed():
     assert [p["source_url"] for p in cited] == [RULE["source_url"]]
 
 
+def test_link_in_full_width_brackets_is_kept():
+    text, cited = finalize("Four Q-drops【https://student-rules.tamu.edu/rule01/】.", [RULE])
+    assert "link removed" not in text
+    assert "【https://student-rules.tamu.edu/rule01/】" in text
+    assert [p["source_url"] for p in cited] == [RULE["source_url"]]
+
+
+def test_passage_id_cited_instead_of_a_link_becomes_the_link():
+    text, cited = finalize("Four Q-drops (student-rules:rule01:4).", [RULE])
+    assert "(https://student-rules.tamu.edu/rule01/)" in text
+    assert "student-rules:rule01:4" not in text
+    assert [p["source_url"] for p in cited] == [RULE["source_url"]]
+
+
+def test_bare_site_name_becomes_the_link_only_when_one_source_matches():
+    anex = {**RULE, "id": "anex:math151:live", "source_url": "https://anex.us/grades/?dept=MATH&number=151"}
+    rmp = [{**RULE, "id": f"rmp:{i}:live", "source_url": f"https://www.ratemyprofessors.com/professor/{i}"}
+           for i in (1, 2)]
+    text, cited = finalize("GPA 3.18 (anex.us). Rated 4.7 (ratemyprofessors.com).", [anex, *rmp])
+    assert "(https://anex.us/grades/?dept=MATH&number=151)" in text
+    assert "(ratemyprofessors.com)" in text  # two profiles match, so it can't pick one
+    assert [p["source_url"] for p in cited] == [anex["source_url"]]
+
+
 def test_uncited_answer_still_lists_sources():
     text, cited = finalize("You get four.", [RULE])
     assert "Sources:" in text and RULE["source_url"] in text

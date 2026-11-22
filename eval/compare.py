@@ -10,6 +10,8 @@ bootstrap 95% CI over questions, plus wins / losses / ties on passed.
 
 Each side must be one commit, model and mode, and both sides the same commit and model:
 only the search mode (or whatever else you are testing on the same commit) may differ.
+--allow-setup-change lets the two sides differ in commit and model too, for before/after-fix
+runs or one model against another on the same questions.
 """
 
 import argparse
@@ -58,7 +60,7 @@ def compare(a: list[dict], b: list[dict]) -> dict:
 
 
 def label(recs: list[dict]) -> str:
-    return f"{recs[0].get('mode')} ({', '.join(sorted({r.get('experiment', '') for r in recs}))})"
+    return f"{recs[0].get('model')}, {recs[0].get('mode')}, commit {recs[0].get('commit')} ({', '.join(sorted({r.get('experiment', '') for r in recs}))})"
 
 
 def main(argv=None) -> int:
@@ -66,6 +68,8 @@ def main(argv=None) -> int:
     parser.add_argument("files", nargs="*", type=Path, help="A.jsonl B.jsonl (or use --a and --b)")
     parser.add_argument("--a", nargs="+", type=Path, default=[], help="side A's --out files")
     parser.add_argument("--b", nargs="+", type=Path, default=[], help="side B's --out files")
+    parser.add_argument("--allow-setup-change", action="store_true",
+                        help="let A and B differ in commit and model (before/after fixes, model vs model)")
     args = parser.parse_args(argv)
     if args.files:
         if len(args.files) != 2 or args.a or args.b:
@@ -82,8 +86,9 @@ def main(argv=None) -> int:
         if problem := mismatch(recs):
             print(f"Not comparing: side {side}: {problem}", file=sys.stderr)
             return 1
-    if problem := mismatch(a[:1] + b[:1], keys=("commit", "model")):
-        print(f"Not comparing: A and B differ in more than the setting under test: {problem}", file=sys.stderr)
+    if not args.allow_setup_change and (problem := mismatch(a[:1] + b[:1], keys=("commit", "model"))):
+        print(f"Not comparing: A and B differ in more than the setting under test: {problem}"
+              " (pass --allow-setup-change to compare anyway)", file=sys.stderr)
         return 1
 
     result = compare(a, b)

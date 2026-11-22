@@ -3,8 +3,8 @@
     python -m agent.run "when's q drop"
     python -m agent.run --file eval/questions/student-rules-rushilsagar.jsonl
 
-Needs GROQ_API_KEY in your environment or in a .env file at the repo root.
-Set AGGIEFLOW_MODEL to try another model (default: groq:openai/gpt-oss-20b, temperature 0).
+Needs GOOGLE_API_KEY in your environment or in a .env file at the repo root.
+Set AGGIEFLOW_MODEL to try another model (default: google_genai:gemini-3.5-flash-lite, temperature 0).
 Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY to send each run to LangSmith (see .env.example).
 """
 

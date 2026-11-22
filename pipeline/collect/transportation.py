@@ -43,9 +43,11 @@ TIMEOUT_SECONDS = 30
 MAX_PAGES = 400  # safety limit; the site has about 200 static pages
 
 # Paths that aren't static information pages: news archives, job and fleet
-# portals that need a login, error pages and the AggieSpirit redirect.
+# portals that need a login, error pages, the AggieSpirit redirect, and live
+# garage counts (parking/realtime), which are stale minutes after we save them.
 SKIP_PATHS = re.compile(
-    r"^/(about/news/|mis/|myfleet|errorpages/|busroutes|dprweb|bikemap)", re.IGNORECASE
+    r"^/(about/news/|mis/|myfleet|errorpages/|busroutes|dprweb|bikemap|parking/realtime)",
+    re.IGNORECASE,
 )
 FILE_EXTENSIONS = re.compile(r"\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|svg|zip|mp4|css|js)$",
                              re.IGNORECASE)

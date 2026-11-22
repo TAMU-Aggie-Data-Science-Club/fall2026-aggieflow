@@ -67,6 +67,11 @@ def test_a_wrong_number_or_professor_fails(answer, problem):
     assert result == 0 and problem in comment
 
 
+def test_numbered_list_markers_are_not_claims():
+    answer = "Highest GPA:\n\n1. ALTEMOSE A - 3.08 GPA\n2. Another prof - 38% A's"
+    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
+
+
 def test_an_answer_with_no_numbers_fails_when_numbers_were_expected():
     assert run_eval.numbers_match("It's a hard class.", "2.68 average GPA", []) == (0, "the answer states no numbers")
 
@@ -129,6 +134,15 @@ def test_grade_tasks_use_numbers_match_instead_of_correctness():
     graded = run_eval.grade(meta, ref, out, [judge("correctness", 0), *YES_JUDGES[1:]])
     assert graded["correctness"][0] is None
     assert scores(graded)["numbers_match"] == 1 and scores(graded)["passed"] == 1
+
+
+def test_not_sure_with_related_links_still_counts_as_declining():
+    meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
+    ref = {"answer": "NOT_SURE", "source_url": None}
+    out = {"answer": "I'm not sure; live counts aren't available.", "sources": [passage(RULE01)],
+           "documents": [passage(RULE01)], "calls": [call("search_transportation", query="garage")]}
+    s = scores(run_eval.grade(meta, ref, out, None))
+    assert (s["not_sure_correct"], s["answered_out_of_scope"], s["passed"]) == (1, 0, 1)
 
 
 def test_not_sure_task_with_no_tools():
@@ -329,6 +343,16 @@ def test_compare_main_refuses_different_commits(tmp_path, capsys):
     assert "B wins 0, loses 1, ties 0" in capsys.readouterr().out
 
 
+def test_compare_allows_a_model_or_commit_change_when_asked(tmp_path, capsys):
+    a = write(tmp_path / "a.jsonl", [record("q1", 0)])
+    b = write(tmp_path / "b.jsonl", [{**record("q1", 1, commit="def5678"), "model": "google_genai:x"}])
+    assert compare.main([str(a), str(b)]) == 1
+    assert "--allow-setup-change" in capsys.readouterr().err
+    assert compare.main([str(a), str(b), "--allow-setup-change"]) == 0
+    out = capsys.readouterr().out
+    assert "google_genai:x" in out and "B wins 1, loses 0, ties 0" in out
+
+
 # --- end to end, locally ----------------------------------------------------------
 
 def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
@@ -372,3 +396,59 @@ def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
     assert run_eval.main(["--questions", str(tmp_path), "--repetitions", "1", "--no-upload",
                           "--no-judges", "--search-only", "--out", str(out_file)]) == 0
     assert [r["id"] for r in summarize.load([out_file])] == ["sr-01"]  # sr-02 expects no tools
+
+
+def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
+    rows = [{"id": f"sr-0{i}", "question": f"q{i}", "answer": "x", "source_url": RULE01} for i in (1, 2, 3)]
+    (tmp_path / "student-rules-test.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n",
+                                                       encoding="utf-8")
+    ids = tmp_path / "ids.txt"
+    ids.write_text("# sample\nsr-01\n\nsr-03  # last\n", encoding="utf-8")
+    seen = []
+
+    def fake_answer(question, question_id):
+        seen.append(question_id)
+        return {"answer": "x", "sources": [], "documents": [], "calls": [], "trace": []}
+
+    monkeypatch.setattr(run_eval, "answer_fn", fake_answer)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")
+    args = ["--questions", str(tmp_path), "--repetitions", "1", "--no-upload", "--no-judges",
+            "--out", str(tmp_path / "run.jsonl"), "--ids", str(ids)]
+    assert run_eval.main(args) == 0
+    assert sorted(seen) == ["sr-01", "sr-03"]
+
+    ids.write_text("sr-01\nsr-09\n", encoding="utf-8")
+    assert run_eval.main(args) == 1
+    assert "sr-09" in capsys.readouterr().err
+
+
+def test_judges_option_runs_only_the_named_judges(tmp_path, monkeypatch, capsys):
+    import sys
+    import types
+
+    calls = []
+
+    def counting(name):
+        def fn(inputs, outputs, reference_outputs):
+            calls.append(name)
+            return {"key": name, "score": 1, "comment": ""}
+        fn.__name__ = name
+        return fn
+
+    fake = types.ModuleType("judges")
+    fake.JUDGES = [counting(n) for n in ("correctness", "relevance", "groundedness", "retrieval_relevance")]
+    monkeypatch.setitem(sys.modules, "judges", fake)
+    row = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01}
+    (tmp_path / "student-rules-test.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    monkeypatch.setattr(run_eval, "answer_fn", lambda question, question_id: {
+        "answer": "Four.", "sources": [passage(RULE01)], "documents": [passage(RULE01)], "trace": [],
+        "calls": [call("search_student_rules", query="q drops")]})
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")
+    args = ["--questions", str(tmp_path), "--repetitions", "1", "--no-upload", "--out", str(tmp_path / "r.jsonl")]
+    assert run_eval.main([*args, "--judges", "correctness"]) == 0
+    assert calls == ["correctness"]
+
+    assert run_eval.main([*args, "--judges", "correctness,vibes"]) == 1
+    assert "vibes" in capsys.readouterr().err
