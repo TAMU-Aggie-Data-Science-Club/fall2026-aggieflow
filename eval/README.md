@@ -60,7 +60,7 @@ Questions copied from a page share its words, which makes keyword search look be
 | `groundedness` | whether every claim is in the retrieved passages. The agent's standard "I'm not sure" answer counts as grounded with no LLM call; a hedged answer is still judged. |
 | `retrieval_relevance` | whether the retrieved passages answer the question. With no passages, the score is `None`. |
 
-The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a different model family from the agent's `gpt-oss-120b`. If you change it, calibrate again.
+The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a different model family from the agent's Gemini. If you change it, calibrate again.
 
 **Calibrate before you trust them:**
 

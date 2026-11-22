@@ -3,7 +3,7 @@
 Only the agent's first model call runs: no tools, no database. That makes these
 tests fast and cheap, and it isolates routing from search quality.
 
-Run from the repo root (needs GROQ_API_KEY in .env):
+Run from the repo root (needs GOOGLE_API_KEY in .env):
 
     uv run pytest -m live tests/test_routing.py --langsmith-output
 
@@ -57,8 +57,11 @@ RESULTS: list[tuple[list[str], list[str]]] = []  # (expected tools, tools picked
 def agent_node():
     # .env is loaded here, not at import, so offline tests in the same run never see its keys.
     load_dotenv(ROOT / ".env")
-    if not os.environ.get("GROQ_API_KEY"):
-        pytest.skip("needs GROQ_API_KEY")
+    from agent.graph import model_name
+
+    key = "GOOGLE_API_KEY" if model_name().startswith("google_genai:") else "GROQ_API_KEY"
+    if not os.environ.get(key):
+        pytest.skip(f"needs {key}")
     if not os.environ.get("LANGSMITH_API_KEY"):
         os.environ.setdefault("LANGSMITH_TEST_TRACKING", "false")  # run locally, upload nothing
     from agent.graph import default_model, make_agent_node

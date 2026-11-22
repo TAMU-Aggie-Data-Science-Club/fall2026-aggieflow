@@ -64,6 +64,13 @@ def test_link_in_full_width_brackets_is_kept():
     assert [p["source_url"] for p in cited] == [RULE["source_url"]]
 
 
+def test_passage_id_cited_instead_of_a_link_becomes_the_link():
+    text, cited = finalize("Four Q-drops (student-rules:rule01:4).", [RULE])
+    assert "(https://student-rules.tamu.edu/rule01/)" in text
+    assert "student-rules:rule01:4" not in text
+    assert [p["source_url"] for p in cited] == [RULE["source_url"]]
+
+
 def test_uncited_answer_still_lists_sources():
     text, cited = finalize("You get four.", [RULE])
     assert "Sources:" in text and RULE["source_url"] in text

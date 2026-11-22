@@ -19,7 +19,7 @@ from agent.checks import finalize
 from agent.state import State
 from agent.tools import ALL_TOOLS
 
-DEFAULT_MODEL = "groq:openai/gpt-oss-120b"
+DEFAULT_MODEL = "google_genai:gemini-3.5-flash-lite"
 MAX_ROUNDS = 4
 
 SYSTEM_PROMPT = """You are AggieFlow, an assistant for Texas A&M students.

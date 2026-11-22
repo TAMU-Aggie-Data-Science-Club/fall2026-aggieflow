@@ -33,7 +33,7 @@
    two experiments question by question.
 
 known-gap tasks are skipped; --search-only keeps only tasks that expect a search_* tool; --ids
-keeps only the ids listed in a file (one per line, # comments allowed), e.g. eval/sample-40.txt. Needs GROQ_API_KEY and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
+keeps only the ids listed in a file (one per line, # comments allowed), e.g. eval/sample-40.txt. Needs GOOGLE_API_KEY (agent), GROQ_API_KEY (judges) and MONGODB_URI (for Atlas), and LANGSMITH_API_KEY
 unless --no-upload. Experiments are named <area>-<mode>-<commit>, e.g. agent-keyword-284cec7.
 """
 

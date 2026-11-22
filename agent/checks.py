@@ -3,7 +3,8 @@
 1. No sources gathered -> "I'm not sure".
 2. The model said it's not sure and cited nothing -> "I'm not sure", with no
    sources (it didn't use the passages it was given, so they aren't citations).
-3. Any link in the answer that no tool returned is removed.
+3. A passage id cited in place of a link becomes that passage's link.
+   Any link in the answer that no tool returned is removed.
 4. A "Sources:" list is added. Live data says when it was fetched.
 """
 
@@ -43,6 +44,12 @@ def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
                 cited.append(url)
             return match.group(0)
         return "[link removed: not from a source]"
+
+    # Some models (Gemini Flash Lite) cite a passage's id instead of its link; swap in the link.
+    ids = sorted({p["id"] for p in sources if p.get("source_url")}, key=len, reverse=True)
+    if ids:
+        url_of = {p["id"]: p["source_url"] for p in sources if p.get("source_url")}
+        answer = re.sub("|".join(map(re.escape, ids)), lambda m: url_of[m.group(0)], answer)
 
     text = URL.sub(keep_or_drop, answer).strip()
 

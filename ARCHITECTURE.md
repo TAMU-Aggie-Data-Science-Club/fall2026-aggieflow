@@ -74,7 +74,7 @@ anex.us feed (live, cached a day) ───────────────�
 # once: install uv (https://docs.astral.sh/uv/), e.g. `brew install uv` or
 # `curl -LsSf https://astral.sh/uv/install.sh | sh`
 uv sync                # Python 3.14 and the exact package versions in uv.lock, in .venv/
-cp .env.example .env   # then add your GROQ_API_KEY (and MONGODB_URI for Atlas)
+cp .env.example .env   # then add your GOOGLE_API_KEY (and MONGODB_URI for Atlas)
 uv run python -m agent.run "when's q drop"
 uv run pytest
 uv run python eval/score.py
@@ -82,7 +82,7 @@ uv run python eval/score.py
 
 Everyone gets the same environment: `uv sync` installs the Python version in `.python-version` and the exact versions in `uv.lock`. To add or change a package, run `uv add <package>` (it updates `pyproject.toml` and `uv.lock`) and commit both; CI fails if they don't match.
 
-The default model is `groq:openai/gpt-oss-120b` (20b until Nov 21, 2026; eval results from before then are on 20b), at temperature 0 so the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
+The default model is `google_genai:gemini-3.5-flash-lite`, at temperature 0. It replaced `groq:openai/gpt-oss-20b` and then `gpt-oss-120b` in Nov 2026 after the #89 eval (see `eval/RESULTS.md`); older eval results are on those models. Temperature 0 means the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
 
 ### For evals
 
