@@ -82,7 +82,7 @@ uv run python eval/score.py
 
 Everyone gets the same environment: `uv sync` installs the Python version in `.python-version` and the exact versions in `uv.lock`. To add or change a package, run `uv add <package>` (it updates `pyproject.toml` and `uv.lock`) and commit both; CI fails if they don't match.
 
-The default model is `groq:openai/gpt-oss-20b`, at temperature 0 so the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
+The default model is `groq:openai/gpt-oss-120b` (20b until Nov 21, 2026; eval results from before then are on 20b), at temperature 0 so the same question gets the same answer. Set `AGGIEFLOW_MODEL` to try another one. `eval/score.py` prints the model, where passages came from, the search mode, and the commit before the scores, so two runs can be compared.
 
 ### For evals
 
