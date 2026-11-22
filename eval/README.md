@@ -101,6 +101,8 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
   - `--questions <file>` runs one file.
   - `--search-only` keeps only tasks whose expected tools include a `search_*` tool. Those are the only tasks the search mode can change.
   - `--no-judges` uses the code graders only.
+  - `--judges correctness` runs only the named judges (comma-separated). `correctness` is the only judge in the pass rule, so this keeps `passed` the same while using a quarter of the judge tokens.
+  - `--ids eval/sample-40.txt` runs only the question ids listed in a file (one per line, `#` comments allowed).
   - `--no-upload` runs locally without a LangSmith key.
 - **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
 

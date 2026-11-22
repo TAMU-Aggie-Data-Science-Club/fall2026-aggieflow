@@ -434,6 +434,8 @@ def main(argv=None) -> int:
     parser.add_argument("--questions", type=Path, default=score.QUESTIONS,
                         help="a .jsonl file or a folder of them (default: eval/questions)")
     parser.add_argument("--no-judges", action="store_true", help="skip the LLM judges (code graders only)")
+    parser.add_argument("--judges", metavar="NAMES",
+                        help="comma-separated judges to run (default: all), e.g. correctness")
     parser.add_argument("--no-upload", action="store_true",
                         help="run locally without LangSmith (no dataset, no experiment)")
     parser.add_argument("--search-only", action="store_true",
@@ -471,6 +473,14 @@ def main(argv=None) -> int:
         from judges import JUDGES
 
         judges = JUDGES
+        if args.judges:
+            by_name = {j.__name__: j for j in JUDGES}
+            names = [n.strip() for n in args.judges.split(",") if n.strip()]
+            unknown = [n for n in names if n not in by_name]
+            if unknown:
+                print(f"Unknown judges: {', '.join(unknown)} (have {', '.join(by_name)})", file=sys.stderr)
+                return 1
+            judges = [by_name[n] for n in names]
 
     def target(inputs: dict) -> dict:
         return answer_fn(inputs["question"], ids.get(inputs["question"], ""))
@@ -488,7 +498,7 @@ def main(argv=None) -> int:
         evaluators=[make_evaluator(judges, MAX_ROUNDS, {t["id"]: t["question"] for t in tasks})],
         num_repetitions=args.repetitions, experiment_prefix=prefix, max_concurrency=1,
         upload_results=not args.no_upload,
-        metadata={"mode": args.mode, "repetitions": args.repetitions, "judges": bool(judges)},
+        metadata={"mode": args.mode, "repetitions": args.repetitions, "judges": [j.__name__ for j in judges]},
     )
     rows = list(results)
     if not args.no_upload:

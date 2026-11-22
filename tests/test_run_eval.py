@@ -397,3 +397,34 @@ def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
     ids.write_text("sr-01\nsr-09\n", encoding="utf-8")
     assert run_eval.main(args) == 1
     assert "sr-09" in capsys.readouterr().err
+
+
+def test_judges_option_runs_only_the_named_judges(tmp_path, monkeypatch, capsys):
+    import sys
+    import types
+
+    calls = []
+
+    def counting(name):
+        def fn(inputs, outputs, reference_outputs):
+            calls.append(name)
+            return {"key": name, "score": 1, "comment": ""}
+        fn.__name__ = name
+        return fn
+
+    fake = types.ModuleType("judges")
+    fake.JUDGES = [counting(n) for n in ("correctness", "relevance", "groundedness", "retrieval_relevance")]
+    monkeypatch.setitem(sys.modules, "judges", fake)
+    row = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01}
+    (tmp_path / "student-rules-test.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    monkeypatch.setattr(run_eval, "answer_fn", lambda question, question_id: {
+        "answer": "Four.", "sources": [passage(RULE01)], "documents": [passage(RULE01)], "trace": [],
+        "calls": [call("search_student_rules", query="q drops")]})
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")
+    args = ["--questions", str(tmp_path), "--repetitions", "1", "--no-upload", "--out", str(tmp_path / "r.jsonl")]
+    assert run_eval.main([*args, "--judges", "correctness"]) == 0
+    assert calls == ["correctness"]
+
+    assert run_eval.main([*args, "--judges", "correctness,vibes"]) == 1
+    assert "vibes" in capsys.readouterr().err
