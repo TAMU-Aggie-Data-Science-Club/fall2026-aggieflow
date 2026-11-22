@@ -1,6 +1,6 @@
 """The AggieFlow agent graph: one agent and one tool node.
 
-    question -> normalize -> agent <-> tools
+    question (+ history) -> normalize -> agent <-> tools
                                \\-> check -> END
 
 The agent loops until it answers or hits MAX_ROUNDS. Every tool call the model
@@ -21,6 +21,7 @@ from agent.tools import ALL_TOOLS
 
 DEFAULT_MODEL = "google_genai:gemini-3.5-flash-lite"
 MAX_ROUNDS = 4
+MAX_HISTORY = 10  # earlier messages kept (5 turns); older ones are dropped
 
 SYSTEM_PROMPT = """You are AggieFlow, an assistant for Texas A&M students.
 Answer only from what your tools return. Never use outside knowledge.
@@ -29,6 +30,10 @@ like (https://student-rules.tamu.edu/rule01/). Copy the source_url exactly;
 never cite a website name like (anex.us) or a passage id instead.
 Don't write a separate sources list; one is added for you.
 If the tools return nothing useful, say you're not sure.
+Earlier messages are the conversation so far. Use them to understand
+follow-ups like "what about summer?", but look facts up again with your tools.
+If several things match and the conversation doesn't say which one
+(for example, two professors named Kim), ask one short question instead of guessing.
 Keep answers short and plain."""
 
 OUT_OF_ROUNDS = (
@@ -36,11 +41,27 @@ OUT_OF_ROUNDS = (
     "or say you're not sure."
 )
 
+def history_messages(history: list[dict]) -> list:
+    """Earlier turns as chat messages: only the question and answer text, without
+    tool calls or the "Sources:" list, so follow-ups stay short."""
+    messages = []
+    for turn in history[-MAX_HISTORY:]:
+        if turn["role"] == "user":
+            messages.append(HumanMessage(turn["content"]))
+        elif turn["role"] == "assistant":
+            messages.append(AIMessage(turn["content"].split("\n\nSources:\n")[0]))
+        else:
+            raise ValueError(f"history role must be 'user' or 'assistant', not {turn['role']!r}")
+    return messages
+
+
 def normalize(state: State) -> dict:
-    """Start a run: the question becomes the first message, with no rounds or
-    sources yet. The student's words are passed on unchanged; if evals show
-    shorthand (qdrop, wcl) hurting search, expand it inside agent/data.py."""
-    return {"messages": [HumanMessage(state["question"])], "rounds": 0, "sources": []}
+    """Start a run: earlier turns, then the question, with no rounds or sources
+    yet, so an answer cites only what was found for it. The student's words are
+    passed on unchanged; if evals show shorthand (qdrop, wcl) hurting search,
+    expand it inside agent/data.py."""
+    messages = [*history_messages(state.get("history") or []), HumanMessage(state["question"])]
+    return {"messages": messages, "rounds": 0, "sources": []}
 
 
 # 0 so the same question gets the same answer, and eval runs can be compared.

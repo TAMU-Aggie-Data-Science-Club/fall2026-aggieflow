@@ -24,6 +24,9 @@ class Passage(TypedDict):
 
 class State(TypedDict, total=False):
     question: str
+    # Earlier turns, oldest first: [{"role": "user" | "assistant", "content": str}].
+    # The caller keeps the conversation; nothing is stored here between runs.
+    history: list[dict]
     messages: Annotated[list[AnyMessage], add_messages]
     # Every passage any tool returned, across all rounds, so it is
     # merged with + instead of overwritten.

@@ -2,6 +2,7 @@
 
     python -m agent.run "when's q drop"
     python -m agent.run --file eval/questions/student-rules-rushilsagar.jsonl
+    python -m agent.run --chat        (a conversation: follow-ups use earlier turns)
 
 Needs GOOGLE_API_KEY in your environment or in a .env file at the repo root.
 Set AGGIEFLOW_MODEL to try another model (default: google_genai:gemini-3.5-flash-lite, temperature 0).
@@ -89,8 +90,13 @@ def run_metadata() -> dict:
     }
 
 
-def answer(question: str, graph=None, metadata: dict | None = None) -> dict:
+def answer(question: str, graph=None, metadata: dict | None = None,
+           history: list[dict] | None = None) -> dict:
     """Answer one question. This is what the Scorer (#40) and members' evals call.
+
+    history is the conversation so far, oldest first:
+    [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}].
+    The caller keeps it and sends it every turn; nothing is stored between calls.
 
     metadata is added to the LangSmith trace, e.g. {"question_id": "sr-03"}.
     The model, temperature, search mode and git commit are always added.
@@ -106,7 +112,7 @@ def answer(question: str, graph=None, metadata: dict | None = None) -> dict:
     """
     graph = graph or _get_graph()
     config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
-    state = graph.invoke({"question": question}, config=config)
+    state = graph.invoke({"question": question, "history": history or []}, config=config)
     retrieved = state.get("sources", [])
     _, cited = finalize(state["messages"][-1].text, retrieved)
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
@@ -128,9 +134,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("question", nargs="?", help="the question to ask")
     parser.add_argument("--file", help="a .jsonl file of eval questions to run")
+    parser.add_argument("--chat", action="store_true", help="have a conversation (empty line to quit)")
     args = parser.parse_args()
 
-    if args.file:
+    if args.chat:
+        history = []
+        while question := input("you> ").strip():
+            result = answer(question, history=history)
+            _print(question, result)
+            history += [{"role": "user", "content": question},
+                        {"role": "assistant", "content": result["answer"]}]
+    elif args.file:
         with open(args.file, encoding="utf-8") as f:
             for line in f:
                 q = json.loads(line)
