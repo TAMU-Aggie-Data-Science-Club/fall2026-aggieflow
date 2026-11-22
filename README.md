@@ -32,7 +32,7 @@ uv run python eval/score.py                  # score against eval/questions/
 
 ## Run the API
 
-The agent is also available over HTTP with FastAPI. A React frontend that calls it is coming next.
+The agent is also available over HTTP with FastAPI. The React UI in `web/` calls it (see [Run the UI](#run-the-ui)).
 
 ```bash
 uv run uvicorn api.main:app --reload
@@ -41,6 +41,16 @@ uv run uvicorn api.main:app --reload
 Then open http://localhost:8000/docs to try `POST /chat` in the browser. Send `{"question": "..."}`, plus `history` (the earlier turns) for follow-ups. Set `ALLOWED_ORIGINS` in `.env` (comma-separated) to let a frontend on another address call it; the default is `http://localhost:5173`.
 
 To add a package, run `uv add <package>` and commit both `pyproject.toml` and `uv.lock`. More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+## Run the UI
+
+The chat interface is a Vite + React app in `web/`. It needs Node.js 18 or newer, and the API running (see above).
+
+```bash
+cd web && npm install && npm run dev
+```
+
+Then open http://localhost:5173. The UI calls the API at `http://localhost:8000`. To use another address, copy `web/.env.example` to `web/.env` and set `VITE_API_URL`.
 
 ## Tech stack
 

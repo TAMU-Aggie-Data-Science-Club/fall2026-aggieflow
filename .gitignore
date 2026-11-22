@@ -30,3 +30,7 @@ venv/
 .env.*
 !.env.example
 .ipynb_checkpoints/
+
+# web/ (React UI, #104)
+node_modules/
+web/dist/
