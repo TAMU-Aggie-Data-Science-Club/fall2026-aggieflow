@@ -67,6 +67,11 @@ def test_a_wrong_number_or_professor_fails(answer, problem):
     assert result == 0 and problem in comment
 
 
+def test_numbered_list_markers_are_not_claims():
+    answer = "Highest GPA:\n\n1. ALTEMOSE A - 3.08 GPA\n2. Another prof - 38% A's"
+    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
+
+
 def test_an_answer_with_no_numbers_fails_when_numbers_were_expected():
     assert run_eval.numbers_match("It's a hard class.", "2.68 average GPA", []) == (0, "the answer states no numbers")
 

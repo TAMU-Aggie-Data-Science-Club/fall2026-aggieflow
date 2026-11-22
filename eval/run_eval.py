@@ -167,6 +167,7 @@ def with_retry(fn, *args, tries=8, wait=15, sleep=None, **kwargs):
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(\s?%|\s?percent)?", re.IGNORECASE)
 _PROFESSOR = re.compile(r"\b([A-Z]{2,}(?:[-'][A-Z]+)?) [A-Z]{1,2}\b(?![a-z\d])")
 _URL = re.compile(r"https?://\S+")
+_LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)  # "1. Martinez": a list item, not a claim
 
 
 def numbers_in(text: str) -> list[tuple[str, float]]:
@@ -181,8 +182,8 @@ def numbers_in(text: str) -> list[tuple[str, float]]:
 
 
 def claims(answer: str) -> str:
-    """The answer without its Sources list and links, whose dates and query numbers aren't claims."""
-    return _URL.sub(" ", answer.split("\nSources:")[0])
+    """The answer without its Sources list, links and list numbering, which aren't claims."""
+    return _LIST_MARKER.sub(" ", _URL.sub(" ", answer.split("\nSources:")[0]))
 
 
 def _number_matches(kind: str, value: float, known) -> bool:
