@@ -30,12 +30,24 @@ uv run pytest                                # offline tests, no API key needed
 uv run python eval/score.py                  # score against eval/questions/
 ```
 
+## Run the API
+
+The agent is also available over HTTP with FastAPI. A React frontend that calls it is coming next.
+
+```bash
+uv run uvicorn api.main:app --reload
+```
+
+Then open http://localhost:8000/docs to try `POST /chat` in the browser. Send `{"question": "..."}`, plus `history` (the earlier turns) for follow-ups. Set `ALLOWED_ORIGINS` in `.env` (comma-separated) to let a frontend on another address call it; the default is `http://localhost:5173`.
+
 To add a package, run `uv add <package>` and commit both `pyproject.toml` and `uv.lock`. More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Repo guide
  
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how we work, [`DELIVERABLES.md`](DELIVERABLES.md) for the timeline, [`DATA.md`](DATA.md) for data sources, and [`CODEOWNERS`](CODEOWNERS) for the team.
 
-## Team
+## Scope and limits
 
-The current PMs and members for this project are listed in [`CODEOWNERS`](CODEOWNERS). PMs listed there are the code owners for PRs into `main`.
+We prioritized the core agent, so some planned features were deferred. The biggest are login (auth) and saved conversation history. For the demo we added multi-turn chat, but with a hard limit of 20 messages per chat, and nothing is stored on the server.
+
+The main focus of this project was thoroughly evaluating the agent: behavior, tool choice and retrieval. Eval results are in [`eval/RESULTS.md`](eval/RESULTS.md).
