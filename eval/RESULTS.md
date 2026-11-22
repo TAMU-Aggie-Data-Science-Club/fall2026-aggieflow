@@ -4,7 +4,9 @@
 setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit 69e9466; LangSmith tracing on
 ```
 
-**Gemini 3.5 Flash Lite passes 82% (33 of 40), 95% CI [70%, 92%], with a typical answer in 1.2 seconds.** It's the agent's model now.
+**Gemini 3.5 Flash Lite passes 90% (36 of 40), 95% CI [80%, 98%], with a typical answer in 1.2 seconds.** It's the agent's model now.
+
+That's 82% (33 of 40) from the full run, plus 3 questions whose reference answers were wrong. They were fixed and rerun, and all 3 pass (see [Rerun](#rerun-after-fixing-3-references)). The comparison with 3.6 Flash below uses the original 82%, since both models ran on the same questions.
 
 LangSmith experiments: `agent-keyword-69e9466-2c690832` (Flash Lite), `agent-keyword-69e9466-752f8042` (3.6 Flash). Command:
 
@@ -62,14 +64,25 @@ With 4–10 questions per source, don't rank sources from this.
 | Question | Step | What happened |
 |---|---|---|
 | `transportation-krishjayanth-10` | **data** | "how many open spots in west campus garage right now": answered "364" from the real-time garage page, which we collected once. The number is a stale snapshot. |
-| `extra-krishjayanth-31` | generation or test | Wi-Fi/router answer the judge failed (120b failed it too). Check the reference. |
-| `student-rules-kaushalp55-02` | judge? | S/U answer looks right. The judge objected to "U counts like an F in your GPA", which the reference seems to agree with. Check. |
-| `transportation-krishjayanth-05` | citation | Right answer (buses are free), cited the bus service page, not "how to ride" |
+| `extra-krishjayanth-31` | **test** | Right answer. The source says a router must have its wireless off; the reference left that out, so the judge failed it. Fixed, passes. |
+| `student-rules-kaushalp55-02` | **test** | Right answer: Rule 10.13.2 counts a U as an F. The reference said it vaguely and the judge misread it. Fixed, passes. |
+| `transportation-krishjayanth-05` | **test** | Right answer, cited the bus service page, which has the same fare text. Added to `also_accept`, passes. |
 | `student-rules-kaushalp55-05` | strict tool rule | Right answer; also searched Registrar first |
 | `anex-rushilsagar-10` | strict tool rule | Right answer; also pulled grades for MATH 151 |
 | `oal-klee-SAM-12` | strict tool rule | Rightly said not sure; searched transportation for "housing" first |
 
-So **1 real wrong answer**, a data problem, not the model. Three are right answers that failed the strict `tool_match` rule, and 2–3 may be test or judge problems.
+So **1 real wrong answer**, a data problem, not the model, and now fixed. Three are right answers that failed the strict `tool_match` rule, and 3 were test problems.
+
+## Rerun after fixing 3 references
+
+Experiment `agent-keyword-4e20cf9-837f8dbf` (commit `4e20cf9`; the agent changed only by the passage-id link fix):
+
+| Question | Before | After |
+|---|---|---|
+| `extra-krishjayanth-31` | fail | **pass** |
+| `student-rules-kaushalp55-02` | fail | **pass** |
+| `transportation-krishjayanth-05` | fail | **pass** |
+| `transportation-krishjayanth-10` (garage, data removed) | fail: said "364 spots" | fail: now says it's not sure, but cites pages and searched a tool, so `not_sure_correct` and `tool_match` fail |
 
 ## Bugs the graders don't catch
 
@@ -85,6 +98,5 @@ About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a c
 ## Still to do
 
 - ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas. The agent now says it's not sure, but it cites pages while saying so, which `not_sure_correct` still fails. Decide whether a "not sure, but see these pages" answer should count.
-- Check the references for `extra-krishjayanth-31` and `student-rules-kaushalp55-02`, and add the bus service page to `transportation-krishjayanth-05`'s `also_accept`.
 - Post Share links for a passing and a failing trace (LangSmith → Share).
 - Next: #76 (vector vs keyword on Flash Lite) and #74 (failure review) build on this run.
