@@ -10,6 +10,7 @@ Each file in `eval/questions/` holds test tasks, one JSON object per line. `eval
 | `question` | yes | What the student types | `"how many q drops do i get"` |
 | `answer` | yes | The correct answer, or `"NOT_SURE"` if our sources can't answer it | `"Four..."` |
 | `source_url` | yes | The page that answers it (`null` for `NOT_SURE`) | `"https://student-rules.tamu.edu/rule01/"` |
+| `also_accept` | no | Other pages that answer it just as well; citing any of them counts as citing the page | `["https://www.it.tamu.edu/oal/aggieprint.html"]` |
 | `tools` | no | Tools the agent should call. `[]` means none. | `["search_student_rules"]` |
 | `args` | no | Expected tool arguments | `{"course": "MATH 151"}` |
 | `set` | no | `regression` (should always pass) or `capability` (hard) | `"capability"` |
@@ -75,7 +76,7 @@ The judge model is `groq:qwen/qwen3.8-27b` at temperature 0, which is a differen
 uv run python eval/run_eval.py --mode keyword --repetitions 3
 ```
 
-- **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. Only new ids are added, so an edited question keeps its old example. `known-gap` tasks are skipped.
+- **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. New ids are added, and an edited question's example is updated to match. `known-gap` tasks are skipped.
 - **Code graders** (1 or 0):
   - `cited_page`
   - `not_sure_correct`

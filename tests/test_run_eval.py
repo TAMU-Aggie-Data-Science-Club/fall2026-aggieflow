@@ -141,6 +141,14 @@ def test_not_sure_task_with_no_tools():
     assert scores(run_eval.grade(meta, ref, searched, None))["passed"] == 0  # tool_match fails
 
 
+def test_citing_an_also_accept_page_passes_cited_page():
+    other = "https://student-rules.tamu.edu/rule02/"
+    out = {**RULES_OUT, "sources": [passage(other)]}
+    assert scores(run_eval.grade(RULES_META, RULES_REF, out, YES_JUDGES))["cited_page"] == 0
+    ref = {**RULES_REF, "also_accept": [other]}
+    assert scores(run_eval.grade(RULES_META, ref, out, YES_JUDGES))["cited_page"] == 1
+
+
 def test_run_metrics_are_recorded_and_do_not_gate():
     out = {**RULES_OUT, "latency_s": 2.5, "fell_back": 1}
     s = scores(run_eval.grade(RULES_META, RULES_REF, out, YES_JUDGES))
@@ -161,6 +169,44 @@ def test_a_not_sure_task_that_answers_anyway_counts_as_answered_out_of_scope():
 
 def test_a_failed_agent_run_fails_the_task():
     assert run_eval.grade(RULES_META, RULES_REF, None, YES_JUDGES) == {"passed": (0, "the agent run failed")}
+
+
+# --- dataset sync -----------------------------------------------------------------
+
+class FakeExample:
+    def __init__(self, id_, fields):
+        self.id, self.inputs, self.outputs = id_, fields["inputs"], fields["outputs"]
+        self.metadata = {**fields["metadata"], "dataset_split": ["base"]}  # LangSmith adds keys
+
+
+class FakeClient:
+    def __init__(self, examples):
+        self.examples, self.created, self.updated = examples, [], []
+
+    def has_dataset(self, dataset_name):
+        return True
+
+    def list_examples(self, dataset_name):
+        return list(self.examples)
+
+    def create_examples(self, dataset_name, examples):
+        self.created += examples
+
+    def update_example(self, example_id, **fields):
+        self.updated.append((example_id, fields))
+
+
+def test_sync_adds_new_questions_and_updates_edited_ones(capsys):
+    task = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01,
+            "source": "student-rules", "tools": ["search_student_rules"]}
+    same = {**task, "id": "sr-02"}
+    old = run_eval.example_fields({**task, "answer": "NOT_SURE", "source_url": None})
+    client = FakeClient([FakeExample("e1", old), FakeExample("e2", run_eval.example_fields(same))])
+    new = {**task, "id": "sr-03"}
+    run_eval.sync_dataset(client, [task, same, new])
+    assert [e["metadata"]["id"] for e in client.created] == ["sr-03"]
+    assert client.updated == [("e1", run_eval.example_fields(task))]
+    assert "1 new, 1 updated" in capsys.readouterr().out
 
 
 # --- retries ----------------------------------------------------------------------

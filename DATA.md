@@ -80,7 +80,7 @@ Don't add or rename fields: `pipeline/check.py` and `pipeline/load.py` depend on
 {"id": "student-rules-rushilsagar-01", "question": "How many days do I have to turn in a doctor's note for an excused absence?", "answer": "Within two working days of returning to class.", "source_url": "https://student-rules.tamu.edu/rule07/"}
 ```
 
-Write questions the way students ask them ("when's q drop"). A question the sources can't answer uses `"answer": "NOT_SURE"` and `"source_url": null`.
+Write questions the way students ask them ("when's q drop"). A question the sources can't answer uses `"answer": "NOT_SURE"` and `"source_url": null`. When another page answers it just as well, list it in `"also_accept"`; the optional fields are in [`eval/README.md`](eval/README.md).
 
 ## Local layout convention
 
