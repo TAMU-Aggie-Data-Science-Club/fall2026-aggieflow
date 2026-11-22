@@ -79,7 +79,7 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
 - **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. New ids are added, and an edited question's example is updated to match. `known-gap` tasks are skipped.
 - **Code graders** (1 or 0):
   - `cited_page`
-  - `not_sure_correct`
+  - `not_sure_correct`: a `NOT_SURE` task's answer says "not sure". Linking related pages is fine.
   - `tool_match`
   - `numbers_match`, on grade tasks (expected tools include `get_course_grades` or `get_professor_grades`). Every number the answer states must match the reference or the passages it retrieved: GPA to 2 decimals, % within 1 point, counts within 1%. It must also name the reference's first professor. A short answer passes; a wrong or made-up number fails.
 - **LLM judges:** the four above. `correctness` is skipped on grade tasks, where `numbers_match` grades the answer.

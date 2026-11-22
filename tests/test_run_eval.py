@@ -131,6 +131,15 @@ def test_grade_tasks_use_numbers_match_instead_of_correctness():
     assert scores(graded)["numbers_match"] == 1 and scores(graded)["passed"] == 1
 
 
+def test_not_sure_with_related_links_still_counts_as_declining():
+    meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
+    ref = {"answer": "NOT_SURE", "source_url": None}
+    out = {"answer": "I'm not sure; live counts aren't available.", "sources": [passage(RULE01)],
+           "documents": [passage(RULE01)], "calls": [call("search_transportation", query="garage")]}
+    s = scores(run_eval.grade(meta, ref, out, None))
+    assert (s["not_sure_correct"], s["answered_out_of_scope"], s["passed"]) == (1, 0, 1)
+
+
 def test_not_sure_task_with_no_tools():
     meta = {"id": "e-01", "source": "extra", "tools": [], "tags": ["no-tool"]}
     ref = {"answer": "NOT_SURE", "source_url": None}

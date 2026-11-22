@@ -10,7 +10,7 @@
 3. Grades every run (one evaluator, so each LLM judge runs once per run):
    - code graders, 1 or 0:
      cited_page        an answerable task cites its source_url (or an also_accept page)
-     not_sure_correct  a NOT_SURE task says "not sure" and cites nothing
+     not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine)
      tool_match        it called tools only from the task's "tools" (and none if that's [])
      numbers_match     grade tasks only: every number the answer states matches the reference or
                        the passages it retrieved (GPA to 2 decimals, % within 1 point, counts within
@@ -257,7 +257,8 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     results = {
         "cited_page": (None, "NOT_SURE task") if expects_not_sure else
         (int(bool(score.accepted_urls(reference) & cited)), f"cited {sorted(cited)}"),
-        "not_sure_correct": (int(said_not_sure and not cited), "") if expects_not_sure else
+        # Declining counts even with links attached ("not sure, but see these pages").
+        "not_sure_correct": (int(said_not_sure), "") if expects_not_sure else
         (None, "answerable task"),
         "tool_match": (None, "no expected tools") if expected is None else
         (int(set(called) <= set(expected) and bool(called) == bool(expected)),
