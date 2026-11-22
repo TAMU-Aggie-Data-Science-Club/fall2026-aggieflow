@@ -84,7 +84,7 @@ About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a c
 
 ## Still to do
 
-- **Real-time pages:** drop `transport.tamu.edu/Parking/realtime.aspx` from the collected data, or mark it live-only. Stale "right now" numbers are worse than "not sure".
+- ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas. The agent now says it's not sure, but it cites pages while saying so, which `not_sure_correct` still fails. Decide whether a "not sure, but see these pages" answer should count.
 - Check the references for `extra-krishjayanth-31` and `student-rules-kaushalp55-02`, and add the bus service page to `transportation-krishjayanth-05`'s `also_accept`.
 - Post Share links for a passing and a failing trace (LangSmith → Share).
 - Next: #76 (vector vs keyword on Flash Lite) and #74 (failure review) build on this run.
