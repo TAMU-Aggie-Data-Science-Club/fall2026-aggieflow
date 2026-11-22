@@ -136,6 +136,18 @@ def test_grade_tasks_use_numbers_match_instead_of_correctness():
     assert scores(graded)["numbers_match"] == 1 and scores(graded)["passed"] == 1
 
 
+def test_grade_and_ratings_tasks_need_numbers_match_and_correctness():
+    meta = {"id": "r-05", "source": "ratemyprofessors", "tags": [],
+            "tools": ["get_professor_ratings", "get_professor_grades"]}
+    ref = {"answer": REFERENCE, "source_url": CHEM}
+    out = {"answer": f"ALTEMOSE A: 9 sections, 2,434 students, GPA 3.08, 38% A, 118 Q-drops ({CHEM})",
+           "sources": [passage(CHEM)], "documents": [], "calls": [call("get_professor_grades")]}
+    right_numbers_wrong_verdict = run_eval.grade(meta, ref, out, [judge("correctness", 0), *YES_JUDGES[1:]])
+    assert scores(right_numbers_wrong_verdict)["numbers_match"] == 1
+    assert scores(right_numbers_wrong_verdict)["passed"] == 0
+    assert scores(run_eval.grade(meta, ref, out, YES_JUDGES))["passed"] == 1
+
+
 def test_not_sure_with_related_links_still_counts_as_declining():
     meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
     ref = {"answer": "NOT_SURE", "source_url": None}

@@ -18,7 +18,8 @@
                        1%), and it names the reference's first professor. Short answers pass;
                        wrong or made-up numbers fail.
    - LLM judges from eval/judges.py: correctness (skipped on grade tasks, where numbers_match
-     grades the answer instead), relevance, groundedness, retrieval_relevance
+     grades the answer instead, unless the task also expects ratings), relevance, groundedness,
+     retrieval_relevance
    - path metrics, numbers that never fail a task: rounds, tool_call_count, redundant_calls,
      tool_error_rate, hit_round_limit, recovered (recovery tasks)
    - run metrics, also never failing a task: latency_s (the attempt that succeeded, without
@@ -26,7 +27,8 @@
      wrongly_not_sure (an answerable task said "not sure"), answered_out_of_scope (a NOT_SURE
      task answered anyway)
    - passed: the run passes when every outcome grader that applies passes: cited_page or
-     not_sure_correct, and numbers_match or correctness. A judge's "unknown" doesn't count.
+     not_sure_correct, and numbers_match or correctness (both on tasks that expect grades
+     and ratings). A judge's "unknown" doesn't count.
 4. Prints pass@1 with a 95% CI (bootstrap over questions) and pass^k (passed all k runs) by
    source, set and tag, plus latency p50/p95, fallbacks and refusal errors.
 5. Writes one JSON line per run to --out (default eval/results/<experiment>.jsonl).
@@ -223,6 +225,12 @@ def is_grade_task(meta: dict) -> bool:
     return bool(GRADE_TOOLS & set(meta.get("tools") or []))
 
 
+def needs_judge(meta: dict) -> bool:
+    """A grade task that also expects ratings has a verdict ("students rate him poorly")
+    that numbers_match can't check, so correctness grades it too."""
+    return "get_professor_ratings" in (meta.get("tools") or [])
+
+
 def path_metrics(calls: list[dict], tags: list[str], max_rounds: int) -> dict:
     seen, redundant = set(), 0
     for c in calls:
@@ -256,6 +264,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     called = [c["name"] for c in outputs.get("calls", [])]
     expected = meta.get("tools")
     grade_task = is_grade_task(meta) and not expects_not_sure
+    judged = not grade_task or needs_judge(meta)
 
     results = {
         "cited_page": (None, "NOT_SURE task") if expects_not_sure else
@@ -272,7 +281,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     inputs = {"question": meta.get("question", "")}
     for judge in judges or []:
         name = judge.__name__
-        if name == "correctness" and grade_task:
+        if name == "correctness" and not judged:
             results[name] = (None, "grade task: numbers_match grades the answer")
             continue
         r = with_retry(judge, inputs, outputs, reference)
@@ -285,8 +294,8 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     results["answered_out_of_scope"] = ((int(not said_not_sure), "") if expects_not_sure else
                                         (None, "answerable task"))
 
-    gates = ["not_sure_correct" if expects_not_sure else "cited_page",
-             "numbers_match" if grade_task else "correctness"]  # tool_match grades the path, so it's only recorded
+    gates = ["not_sure_correct" if expects_not_sure else "cited_page"]
+    gates += ["numbers_match"] * grade_task + ["correctness"] * judged  # tool_match grades the path, so it's only recorded
     scores = {g: results[g][0] for g in gates if g in results and results[g][0] is not None}
     failed = [g for g, s in scores.items() if s != 1]
     results["passed"] = (int(not failed), f"failed {failed}" if failed else f"passed {sorted(scores)}")
