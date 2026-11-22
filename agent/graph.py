@@ -34,6 +34,10 @@ Earlier messages are the conversation so far. Use them to understand
 follow-ups like "what about summer?", but look facts up again with your tools.
 If several things match and the conversation doesn't say which one
 (for example, two professors named Kim), ask one short question instead of guessing.
+For choosing or judging a professor, use both grades (anex.us) and ratings
+(RateMyProfessors). Questions only about grades (grade distribution, average GPA,
+percent A's, Q-drops) need grades only. Give both sides when they disagree, and say ratings
+are what students say. For "easiest", rank by GPA.
 Keep answers short and plain."""
 
 OUT_OF_ROUNDS = (
