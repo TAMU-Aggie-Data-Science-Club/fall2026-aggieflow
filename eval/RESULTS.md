@@ -4,9 +4,9 @@
 setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit 69e9466; LangSmith tracing on
 ```
 
-**Gemini 3.5 Flash Lite passes 90% (36 of 40), 95% CI [80%, 98%], with a typical answer in 1.2 seconds.** It's the agent's model now.
+**Gemini 3.5 Flash Lite passes 92% (37 of 40), 95% CI [82%, 100%], with a typical answer in 1.2 seconds.** It's the agent's model now.
 
-That's 82% (33 of 40) from the full run, plus 3 questions whose reference answers were wrong. They were fixed and rerun, and all 3 pass (see [Rerun](#rerun-after-fixing-3-references)). The comparison with 3.6 Flash below uses the original 82%, since both models ran on the same questions.
+That's 82% (33 of 40) from the full run, plus 4 questions rerun after fixes: 3 had wrong reference answers, and the garage question's data and decline rule changed. All 4 pass (see [Rerun](#rerun-after-fixes)). The 3 that still fail are right answers that broke the strict `tool_match` rule. The comparison with 3.6 Flash below uses the original 82%, since both models ran on the same questions.
 
 LangSmith experiments: `agent-keyword-69e9466-2c690832` (Flash Lite), `agent-keyword-69e9466-752f8042` (3.6 Flash). Command:
 
@@ -73,7 +73,7 @@ With 4–10 questions per source, don't rank sources from this.
 
 So **1 real wrong answer**, a data problem, not the model, and now fixed. Three are right answers that failed the strict `tool_match` rule, and 3 were test problems.
 
-## Rerun after fixing 3 references
+## Rerun after fixes
 
 Experiment `agent-keyword-4e20cf9-837f8dbf` (commit `4e20cf9`; the agent changed only by the passage-id link fix):
 
@@ -82,7 +82,9 @@ Experiment `agent-keyword-4e20cf9-837f8dbf` (commit `4e20cf9`; the agent changed
 | `extra-krishjayanth-31` | fail | **pass** |
 | `student-rules-kaushalp55-02` | fail | **pass** |
 | `transportation-krishjayanth-05` | fail | **pass** |
-| `transportation-krishjayanth-10` (garage, data removed) | fail: said "364 spots" | fail: now says it's not sure, but cites pages and searched a tool, so `not_sure_correct` and `tool_match` fail |
+| `transportation-krishjayanth-10` (garage) | fail: said "364 spots" | **pass**: says it's not sure and links parking pages (experiment `agent-keyword-4512eb2-10cb502a`) |
+
+**Rule change (decided on #89):** a "not sure" answer that links related pages now counts as declining. Before, it had to cite nothing. This changes no other question in either Gemini run. The garage question also goes back to its file's default tool (`search_transportation`), since searching before declining is reasonable here.
 
 ## Bugs the graders don't catch
 
@@ -97,6 +99,6 @@ About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a c
 
 ## Still to do
 
-- ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas. The agent now says it's not sure, but it cites pages while saying so, which `not_sure_correct` still fails. Decide whether a "not sure, but see these pages" answer should count.
+- ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas.
 - Post Share links for a passing and a failing trace (LangSmith → Share).
 - Next: #76 (vector vs keyword on Flash Lite) and #74 (failure review) build on this run.
