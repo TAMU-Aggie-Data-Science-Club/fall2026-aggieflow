@@ -40,7 +40,7 @@ The model and the fixes changed together, so these numbers don't show how much e
 
 - **40 questions, not 127.** `eval/sample-40.txt` covers every source file and tag, `NOT_SURE` and grade questions, the tasks #92 fixed, and the failures #92 left for #74.
 - **pass^3 without the judge.** The headline is 1 run per question, with the judge. The 3-run check used the code graders only (see [Reliability](#reliability-pass3)).
-- **Only the `correctness` judge.** It's the only judge in the pass rule, so `passed` is the same. `relevance`, `groundedness` and `retrieval_relevance` weren't measured.
+- **Only the `correctness` judge.** It's the only judge in the pass rule, so `passed` is the same. `relevance`, `groundedness` and `retrieval_relevance` were measured later on saved answers (see [Judges outside the pass rule](#judges-outside-the-pass-rule-101)).
 - **Decline rule (decided on #89):** a "not sure" answer that links related pages counts as declining. Before, it had to cite nothing.
 
 ## Current agent: details
@@ -60,6 +60,39 @@ From the `c16110e` run, before the 3 reruns, so these slightly understate the cu
 **The 2 failures**, both right answers that failed the strict `tool_match` rule:
 - `anex-rushilsagar-10` ("is professor kim a good teacher"): also pulled MATH 151 grades, which made the answer better.
 - `student-rules-kaushalp55-05` (withdrawing after Q-drop day): searched Registrar as well as Student Rules.
+
+## Judges outside the pass rule (#101)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit aa05068; LangSmith tracing on; judged later by eval/judge_saved.py
+```
+
+All four judges ran on the 40 answers saved from the first pass^3 run (`agent-keyword-aa05068-6ce3493b`), with `eval/judge_saved.py`. The judge model was `groq:qwen/qwen3.8-27b`. The agent wasn't rerun, and the 4 parts were merged with `eval/summarize.py eval/results/judged-part*.jsonl`.
+
+| Judge | Result | 95% CI | Judged "no" |
+|---|---|---|---|
+| `correctness` | 94% (31 of 33) | [85%, 100%] | `extra-krishjayanth-31`, `anex-rushilsagar-10` |
+| `relevance` | 92% (37 of 40) | [82%, 100%] | `transportation-krishjayanth-10`, `extra-krishjayanth-01`, `extra-krishjayanth-08` |
+| `retrieval_relevance` | 92% (33 of 36) | [83%, 100%] | `transportation-krishjayanth-10`, `registrar-aaronj59-10`, `catalog-aguw0kie124-10` |
+| `groundedness` (judge) | 78% (31 of 40) | [65%, 90%] | 9 answers, checked by hand below |
+| `groundedness` (hand-checked) | **90% (36 of 40)** | [80%, 98%] | 4 answers with a real unsupported claim |
+
+**Notes on the table:**
+- `correctness` skips the 7 grade questions, where `numbers_match` grades the answer.
+- `retrieval_relevance` gives no score on 4 questions where nothing was retrieved. Those are `NOT_SURE` or no-tool questions.
+- pass@1 on these answers is also 95% (38 of 40). The two failures differ from the headline's because `tool_match` no longer fails a run: both are `correctness` "no" answers.
+
+**The 9 groundedness flags, checked against the passages.** I re-ran the judge on these 9 to get its reasons, and it flagged all 9 again.
+
+| Verdict | Questions | What happened |
+|---|---|---|
+| **Real unsupported claim** | 4 | `transportation-krishjayanth-08` mixed up the permit rule for accessible spaces with the one for unrestricted spaces. `extra-krishjayanth-34` called 2,593 Q-drops a "rate". `student-rules-rafperez010-07` misread which rule the 684/691/692 courses are exempt from. `anex-rushilsagar-10` said J. Kim's MATH 151 GPA (3.18) is high compared to other instructors, but the passage lists higher ones. |
+| **Nitpick** (the answer is right for the question) | 3 | `student-rules-kaushalp55-08` left out Rule 36's exceptions for aquarium fish and the mascot. `extra-krishjayanth-09` wrote "Z. Martinez" for "MARTINEZ Z". `oal-klee-SAM-03` led with "24/7", then gave chat's shorter hours. |
+| **Judge wrong** | 2 | `oal-klee-SAM-09`: a passage does say "OpenAI-compatible API". `extra-krishjayanth-31`: the IoT page supports connecting consoles and TVs to TAMU_IoT. |
+
+**What this means:**
+- Groundedness is about **90%**: roughly 1 answer in 10 adds a detail its passages don't support. These are mostly small errors (a mislabeled number, a merged rule), not made-up facts.
+- **The judge alone isn't reliable enough to fail runs on.** Only 4 of its 9 flags were real, and its 31 passes weren't hand-checked, so its miss rate is unknown. It should stay outside the pass rule until it's calibrated on answers with planted errors (#88's optional item).
 
 ## Reliability (pass^3)
 
@@ -192,6 +225,6 @@ About 5K tokens per question: a fraction of a cent on paid Gemini Flash Lite, so
 ## Not measured
 
 - **pass^3 with the judge:** the 3-run check used code graders only.
-- **Judges outside the pass rule:** `relevance`, `groundedness`, `retrieval_relevance`.
+- **Judges outside the pass rule, beyond one run:** `relevance`, `groundedness` and `retrieval_relevance` were judged on one saved run of the 40 questions only ([#101](#judges-outside-the-pass-rule-101)). The groundedness judge isn't calibrated.
 - **The 40-question headline with hybrid:** the numbers above it are keyword, the default when they ran. #76 shows hybrid ties keyword on pass@1.
 - #74 (failure review) can build on this file's failure list.
