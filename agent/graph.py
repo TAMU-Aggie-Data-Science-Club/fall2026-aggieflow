@@ -15,7 +15,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.config import get_executor_for_config
 from langgraph.graph import END, START, StateGraph
 
-from agent.checks import finalize
+from agent.checks import finalize, tools_called
 from agent.state import State
 from agent.tools import ALL_TOOLS
 
@@ -30,6 +30,8 @@ like (https://student-rules.tamu.edu/rule01/). Copy the source_url exactly;
 never cite a website name like (anex.us) or a passage id instead.
 Don't write a separate sources list; one is added for you.
 If the tools return nothing useful, say you're not sure.
+Greetings, thanks and "what can you do" need no tools. Anything else you can't
+look up, including requests to write or do something for the student, gets "not sure".
 Earlier messages are the conversation so far. Use them to understand
 follow-ups like "what about summer?", but look facts up again with your tools.
 If several things match and the conversation doesn't say which one
@@ -139,7 +141,7 @@ def make_tools_node():
 
 
 def check(state: State) -> dict:
-    text, _ = finalize(state["messages"][-1].text, state.get("sources", []))
+    text, _ = finalize(state["messages"][-1].text, state.get("sources", []), tools_called(state["messages"]))
     return {"answer": text}
 
 

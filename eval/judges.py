@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from agent.checks import NOT_SURE as DECLINE  # the agent's exact text when it can't answer
+from agent.checks import INTRO, NOT_SURE as DECLINE  # the agent's fixed replies: intro, and the start of a decline
 
 JUDGE_MODEL = "groq:qwen/qwen3.8-27b"
 TEMPERATURE = 0
@@ -107,9 +107,9 @@ Is the answer relevant to the question?""")
 def groundedness(inputs: dict, outputs: dict, reference_outputs: dict | None = None) -> dict:
     documents = outputs.get("documents") or []
     answer = outputs["answer"]
-    # A full decline makes no claims (the model ignored this rule in a prompt). Only the exact
-    # decline: a hedged answer ("not sure about summer, but in fall...") still makes claims.
-    if answer.strip() == DECLINE:
+    # A full decline or the intro makes no claims (the model ignored this rule in a prompt). Only
+    # the agent's fixed text: a hedged answer ("not sure about summer, but in fall...") still makes claims.
+    if answer.strip().startswith(DECLINE) or answer.strip() == INTRO:
         return {"key": "groundedness", "score": 1, "comment": "answer declined, so it makes no claims"}
     if not documents:
         return {"key": "groundedness", "score": 0, "comment": "no passages retrieved, but the answer made claims"}

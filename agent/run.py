@@ -16,7 +16,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-from agent.checks import finalize
+from agent.checks import finalize, tools_called
 from agent.tools import GROUP_OF
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -114,7 +114,7 @@ def answer(question: str, graph=None, metadata: dict | None = None,
     config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
     state = graph.invoke({"question": question, "history": history or []}, config=config)
     retrieved = state.get("sources", [])
-    _, cited = finalize(state["messages"][-1].text, retrieved)
+    _, cited = finalize(state["messages"][-1].text, retrieved, tools_called(state["messages"]))
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
     return {"answer": state["answer"], "sources": cited, "documents": documents,
             "trace": trace(state["messages"]), "calls": tool_calls(state["messages"])}

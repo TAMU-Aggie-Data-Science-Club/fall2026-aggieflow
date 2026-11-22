@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from agent import data
-from agent.checks import NOT_SURE, finalize
+from agent.checks import INTRO, NOT_SURE, finalize
 from agent.graph import build_graph
 from agent.run import answer
 
@@ -42,9 +42,21 @@ def call(name, args, id):
 
 # --- checks ---------------------------------------------------------------
 
-def test_no_sources_means_not_sure():
+def test_no_tool_reply_becomes_the_intro():
+    # "hello" or "what can you do": the model's own words, facts or not, are replaced.
     text, cited = finalize("You get four Q-drops.", [])
-    assert text == NOT_SURE and cited == []
+    assert text == INTRO and cited == []
+
+
+def test_no_tool_not_sure_says_what_aggieflow_covers():
+    text, cited = finalize("I'm not sure, I can't check the weather.", [])
+    assert text.startswith(NOT_SURE) and "IT help" in text and cited == []
+
+
+def test_empty_search_points_to_the_searched_site():
+    text, cited = finalize("Not sure.", [], ["search_tech_help", "search_tech_help"])
+    assert text == f"{NOT_SURE} Try Technology Services (https://it.tamu.edu)."
+    assert cited == []
 
 
 def test_link_not_from_a_source_is_removed():
@@ -88,8 +100,8 @@ def test_uncited_answer_still_lists_sources():
 
 
 def test_model_not_sure_lists_no_sources():
-    text, cited = finalize("I’m not sure. (No relevant information was found.)", [RULE])
-    assert text == NOT_SURE and cited == []
+    text, cited = finalize("I’m not sure. (No relevant information was found.)", [RULE], ["search_student_rules"])
+    assert text == f"{NOT_SURE} Try the Student Rules (https://student-rules.tamu.edu)." and cited == []
 
 
 def test_hedged_answer_that_cites_a_source_is_kept():
@@ -124,7 +136,7 @@ def test_empty_search_gives_not_sure():
         AIMessage("The Aggies won."),
     ])
     result = answer("who won the 1998 game", graph=build_graph(model))
-    assert result["answer"] == NOT_SURE
+    assert result["answer"].startswith(NOT_SURE) and "student-rules.tamu.edu" in result["answer"]
 
 
 def test_transportation_search_answers_and_cites():
@@ -158,7 +170,7 @@ def test_round_limit_falls_back_when_model_errors():
 
     result = answer("how many q drops", graph=build_graph(Stubborn()))
     assert len(result["trace"]) == 4  # stopped at MAX_ROUNDS
-    assert result["answer"] == NOT_SURE
+    assert result["answer"].startswith(NOT_SURE)
     assert result["sources"] == []  # what it searched isn't cited when it gives up
 
 
@@ -168,7 +180,7 @@ def test_unknown_tool_is_reported_not_crashed():
         AIMessage("Not sure."),
     ])
     result = answer("weather?", graph=build_graph(model))
-    assert result["answer"] == NOT_SURE
+    assert result["answer"].startswith(NOT_SURE)
     assert result["calls"] == [{"round": 1, "name": "get_weather", "args": {}, "error": True}]
 
 

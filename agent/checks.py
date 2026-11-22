@@ -1,8 +1,11 @@
 """Checks that run in code after the model answers. No model calls here.
 
-1. No sources gathered -> "I'm not sure".
-2. The model said it's not sure and cited nothing -> "I'm not sure", with no
-   sources (it didn't use the passages it was given, so they aren't citations).
+1. No tool called and the model didn't say it's not sure (hi, thanks, "what
+   can you do") -> a fixed intro listing what AggieFlow covers. The model picks
+   the case; code writes the words, so nothing made up gets through.
+2. No sources gathered, or the model said it's not sure and cited nothing ->
+   "I'm not sure", pointing to the sites it searched (or, if it searched none,
+   to what AggieFlow covers), with no sources.
 3. A passage id, or a bare site name like (anex.us) when only one source is
    from that site, cited in place of a link becomes that link.
    Any link in the answer that no tool returned is removed.
@@ -14,11 +17,38 @@ from urllib.parse import urlsplit
 
 from agent.state import Passage
 
-NOT_SURE = (
-    "I'm not sure. I couldn't find this in AggieFlow's sources. "
-    "Try the Registrar (https://registrar.tamu.edu) or the Student Rules "
-    "(https://student-rules.tamu.edu)."
-)
+NOT_SURE = "I'm not sure. I couldn't find this in AggieFlow's sources."
+
+COVERS = ("the Student Rules, registrar dates and deadlines, degree plans, the course catalog, "
+          "grade distributions, professor ratings, IT help and transportation")
+
+INTRO = f"Howdy! I'm AggieFlow. I can answer questions about {COVERS}. What do you need?"
+
+# Where to look when a search found nothing: the site each tool searches.
+SITES = {
+    "search_student_rules": ("the Student Rules", "https://student-rules.tamu.edu"),
+    "search_registrar": ("the Registrar", "https://registrar.tamu.edu"),
+    "search_tech_help": ("Technology Services", "https://it.tamu.edu"),
+    "search_degree_plans": ("the catalog", "https://catalog.tamu.edu"),
+    "get_course": ("the catalog", "https://catalog.tamu.edu"),
+    "search_transportation": ("Transportation Services", "https://transport.tamu.edu"),
+    "get_course_grades": ("anex.us", "https://anex.us"),
+    "get_professor_grades": ("anex.us", "https://anex.us"),
+    "get_professor_ratings": ("RateMyProfessors", "https://www.ratemyprofessors.com"),
+}
+
+
+def tools_called(messages: list) -> list[str]:
+    """Names of the tools the agent called this turn, in order."""
+    return [c["name"] for m in messages for c in (getattr(m, "tool_calls", None) or [])]
+
+
+def not_sure(called: list[str]) -> str:
+    """'Not sure', pointing to the sites the agent searched, or to what AggieFlow covers."""
+    sites = list(dict.fromkeys(SITES[name] for name in called if name in SITES))[:2]
+    if not sites:
+        return f"{NOT_SURE} I can help with {COVERS}."
+    return f"{NOT_SURE} Try " + " or ".join(f"{label} ({url})" for label, url in sites) + "."
 
 # Stops at brackets, quotes and the full-width 【】 some models (gpt-oss) wrap citations in.
 URL = re.compile(r"https?://[^\s)\]>\"'【】]+")
@@ -30,10 +60,14 @@ def _clean(url: str) -> str:
     return url.rstrip(".,;:")
 
 
-def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
-    """Return (final answer text, passages it cites)."""
+def finalize(answer: str, sources: list[Passage], called: list[str] = ()) -> tuple[str, list[Passage]]:
+    """Return (final answer text, passages it cites). called is the tools the agent
+    called this turn, in order."""
+    said_not_sure = "not sure" in answer.lower()
+    if not called and not sources and not said_not_sure:
+        return INTRO, []
     if not sources:
-        return NOT_SURE, []
+        return not_sure(called), []
 
     by_url: dict[str, Passage] = {}
     for p in sources:
@@ -70,7 +104,7 @@ def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
     text = URL.sub(keep_or_drop, answer).strip()
 
     if not cited and "not sure" in text.lower():
-        return NOT_SURE, []
+        return not_sure(called), []
 
     # A clarifying question ("Which Professor Kim?") cites nothing, so don't pad it with sources.
     if not cited and text.endswith("?"):
