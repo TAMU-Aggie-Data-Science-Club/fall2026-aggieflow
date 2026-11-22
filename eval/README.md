@@ -15,6 +15,7 @@ Each file in `eval/questions/` holds test tasks, one JSON object per line. `eval
 | `args` | no | Expected tool arguments | `{"course": "MATH 151"}` |
 | `set` | no | `regression` (should always pass) or `capability` (hard) | `"capability"` |
 | `tags` | no | Labels for slicing results | `["paraphrase"]` |
+| `history` | no | Earlier turns of a conversation, oldest first. `question` is the follow-up being graded. | `[{"role": "user", "content": "when's q drop"}, {"role": "assistant", "content": "..."}]` |
 
 When a line has no `tools`, the scorer picks a default from the file name:
 

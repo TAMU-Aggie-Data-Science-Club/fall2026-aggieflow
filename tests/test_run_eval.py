@@ -258,7 +258,7 @@ def test_measured_times_only_the_attempt_that_succeeded():
     ticks = iter([0.0, 100.0, 104.5])  # attempt 1 starts at 0 and fails; attempt 2 runs 100 -> 104.5
     attempts = []
 
-    def answer(question, metadata):
+    def answer(question, metadata, history=None):
         attempts.append(metadata)
         if len(attempts) == 1:
             raise RateLimitError("tokens per minute (TPM): Limit 8000")
@@ -364,7 +364,7 @@ def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
                                                        encoding="utf-8")
     runs = {"sr-01": 0}
 
-    def fake_answer(question, question_id):
+    def fake_answer(question, question_id, history=None):
         if question_id == "sr-02":
             return {"answer": "I'm not sure.", "sources": [], "documents": [], "calls": [], "trace": []}
         runs["sr-01"] += 1  # cites the page on the first run only
@@ -406,7 +406,7 @@ def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
     ids.write_text("# sample\nsr-01\n\nsr-03  # last\n", encoding="utf-8")
     seen = []
 
-    def fake_answer(question, question_id):
+    def fake_answer(question, question_id, history=None):
         seen.append(question_id)
         return {"answer": "x", "sources": [], "documents": [], "calls": [], "trace": []}
 
@@ -441,7 +441,7 @@ def test_judges_option_runs_only_the_named_judges(tmp_path, monkeypatch, capsys)
     monkeypatch.setitem(sys.modules, "judges", fake)
     row = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01}
     (tmp_path / "student-rules-test.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
-    monkeypatch.setattr(run_eval, "answer_fn", lambda question, question_id: {
+    monkeypatch.setattr(run_eval, "answer_fn", lambda question, question_id, history=None: {
         "answer": "Four.", "sources": [passage(RULE01)], "documents": [passage(RULE01)], "trace": [],
         "calls": [call("search_student_rules", query="q drops")]})
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
@@ -452,3 +452,12 @@ def test_judges_option_runs_only_the_named_judges(tmp_path, monkeypatch, capsys)
 
     assert run_eval.main([*args, "--judges", "correctness,vibes"]) == 1
     assert "vibes" in capsys.readouterr().err
+
+
+def test_history_is_an_input_only_when_set():
+    task = {"id": "t1", "source": "x", "question": "what about summer?", "answer": "a", "source_url": "u"}
+    assert run_eval.example_fields(task)["inputs"] == {"question": "what about summer?"}
+    history = [{"role": "user", "content": "how many q drops"}, {"role": "assistant", "content": "Four."}]
+    assert run_eval.example_fields({**task, "history": history})["inputs"]["history"] == history
+    # the same follow-up after different conversations is two tasks
+    assert run_eval.task_key(task["question"], history) != run_eval.task_key(task["question"], None)

@@ -92,7 +92,8 @@ def is_search_task(task: dict) -> bool:
 
 def example_fields(task: dict) -> dict:
     return {
-        "inputs": {"question": task["question"]},
+        # history only when set, so single-turn examples already in LangSmith stay unchanged
+        "inputs": {"question": task["question"], **({"history": task["history"]} if task.get("history") else {})},
         "outputs": {"answer": task["answer"], "source_url": task["source_url"],
                     "also_accept": task.get("also_accept") or []},
         "metadata": {"id": task["id"], "source": task["source"], "tools": task.get("tools"),
@@ -293,6 +294,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
 
 def make_evaluator(judges, max_rounds: int, questions_by_id: dict):
     def evaluate_run(outputs: dict, reference_outputs: dict, example) -> dict:
+        # shortcut: judges see only the last question, not a multi-turn task's history; pass it if judge scores look off on follow-ups
         meta = {**example.metadata, "question": questions_by_id.get(example.metadata.get("id"), "")}
         graded = grade(meta, reference_outputs, outputs, judges, max_rounds)
         return {"results": [{"key": k, "score": s, "comment": c} for k, (s, c) in graded.items()]}
@@ -400,23 +402,28 @@ def experiment_prefix(mode: str) -> str:
     return f"agent-{mode}-{commit.split()[0]}{'-dirty' if '+' in commit else ''}"
 
 
-def measured(answer, data, question: str, question_id: str, clock=None) -> dict:
+def task_key(question: str, history: list | None) -> str:
+    """Two multi-turn tasks can end on the same question ("what about summer?")."""
+    return json.dumps([history or [], question])
+
+
+def measured(answer, data, question: str, question_id: str, clock=None, history=None) -> dict:
     """One attempt at answer(), plus latency_s and fell_back for that attempt alone. with_retry
     calls this once per attempt, so neither counts time or searches from attempts that failed."""
     import time
 
     clock = clock or time.perf_counter
     before, start = data.fallback_count, clock()
-    result = answer(question, metadata={"question_id": question_id})
+    result = answer(question, metadata={"question_id": question_id}, history=history)
     return {**result, "latency_s": round(clock() - start, 3), "fell_back": int(data.fallback_count > before)}
 
 
-def answer_fn(question: str, question_id: str) -> dict:
+def answer_fn(question: str, question_id: str, history: list | None = None) -> dict:
     """The real agent, retrying rate limits. Tests replace this."""
     from agent import data
     from agent.run import answer
 
-    return with_retry(measured, answer, data, question, question_id)
+    return with_retry(measured, answer, data, question, question_id, history=history)
 
 
 def run_info(mode: str, experiment: str) -> dict:
@@ -469,7 +476,7 @@ def main(argv=None) -> int:
         print(f"No tasks found at {args.questions}", file=sys.stderr)
         return 1
     print(score.run_setup())
-    ids = {t["question"]: t["id"] for t in tasks}
+    ids = {task_key(t["question"], t.get("history")): t["id"] for t in tasks}
     judges = []
     if not args.no_judges:
         from judges import JUDGES
@@ -485,7 +492,8 @@ def main(argv=None) -> int:
             judges = [by_name[n] for n in names]
 
     def target(inputs: dict) -> dict:
-        return answer_fn(inputs["question"], ids.get(inputs["question"], ""))
+        history = inputs.get("history")
+        return answer_fn(inputs["question"], ids.get(task_key(inputs["question"], history), ""), history)
 
     if args.no_upload:
         os.environ["LANGSMITH_TRACING"] = "false"  # send nothing, even if .env turns tracing on

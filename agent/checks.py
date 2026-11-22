@@ -72,6 +72,10 @@ def finalize(answer: str, sources: list[Passage]) -> tuple[str, list[Passage]]:
     if not cited and "not sure" in text.lower():
         return NOT_SURE, []
 
+    # A clarifying question ("Which Professor Kim?") cites nothing, so don't pad it with sources.
+    if not cited and text.endswith("?"):
+        return text, []
+
     # If the model cited nothing, list everything it was given.
     urls = cited or list(by_url)
     lines = []
