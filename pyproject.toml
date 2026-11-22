@@ -12,6 +12,8 @@ dependencies = [
     "requests>=2.32,<3",        # live anex.us grades, and the collectors
     "beautifulsoup4>=4.12,<5",  # the collectors' HTML parsing
     "langchain-google-genai>=3,<5",
+    "fastapi>=0.165.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
