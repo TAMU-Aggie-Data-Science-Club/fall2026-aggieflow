@@ -388,7 +388,7 @@ def test_main_runs_locally_and_prints_pass_rates(tmp_path, monkeypatch, capsys):
     assert "false answers (answered_out_of_scope): 0 of 2 NOT_SURE runs" in out
 
     saved = summarize.load([out_file])
-    assert len(saved) == 4 and {r["mode"] for r in saved} == {"keyword"}
+    assert len(saved) == 4 and {r["mode"] for r in saved} == {"hybrid"}  # the default mode
     assert sorted((r["id"], r["repetition"], r["passed"]) for r in saved) == [
         ("sr-01", 1, 1), ("sr-01", 2, 0), ("sr-02", 1, 1), ("sr-02", 2, 1)]
     assert "cited_page" in saved[0]["scores"] and "passed" not in saved[0]["scores"]

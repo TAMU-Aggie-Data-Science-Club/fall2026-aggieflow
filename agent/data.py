@@ -7,7 +7,7 @@ Searches and course lookups read passages from one of two places:
 - The collectors' files, data/processed/<source>.jsonl, otherwise. Setting
   AGGIEFLOW_DATA_DIR picks the folder and always uses files (the tests do).
 
-On Atlas, AGGIEFLOW_SEARCH picks keyword (default), vector or hybrid search.
+On Atlas, AGGIEFLOW_SEARCH picks hybrid (default), keyword or vector search.
 
 Either way the tools get the same passages back. Grades come live from
 anex.us and professor ratings live from RateMyProfessors (see below), not
@@ -248,9 +248,9 @@ SEARCH_MODES = {
 
 
 def search_mode() -> str:
-    """How Atlas searches: AGGIEFLOW_SEARCH = keyword (default), vector or hybrid.
+    """How Atlas searches: AGGIEFLOW_SEARCH = hybrid (default), keyword or vector (#76).
     The file search is always keyword."""
-    mode = os.environ.get("AGGIEFLOW_SEARCH", "keyword").strip().lower()
+    mode = os.environ.get("AGGIEFLOW_SEARCH", "hybrid").strip().lower()
     if mode not in SEARCH_MODES:
         raise ValueError(f"AGGIEFLOW_SEARCH={mode!r}: use one of {', '.join(SEARCH_MODES)}")
     return mode

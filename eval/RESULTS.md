@@ -91,16 +91,20 @@ Paired over the same 40 questions on commit `69e9466` (before the citation fix),
 
 Lite won 5 questions, lost 1 and tied 34. The pass difference is within noise, but Lite is clearly faster and never worse.
 
-## Search mode (#76, partly done)
+## Search mode (#76)
 
-All 102 search questions, on the same commit (`c16110e`), with **no judge**, so `passed` = `cited_page` + `tool_match` (+ `numbers_match`). No vector or hybrid query fell back to keyword.
+**Decision: hybrid is now the default** (`AGGIEFLOW_SEARCH`, `run_eval.py --mode`). With the agent, all three modes tie. Hybrid is the safe choice: it ranks the agent's queries best, and when a query is a poorly worded one, it does almost as well as vector, while keyword drops 21 points. It costs about 0.35 s more per answer.
+
+### With the agent
+
+All 102 search questions, commit `c16110e`, **no judge**, so `passed` = `cited_page` + `tool_match` (+ `numbers_match`). No vector or hybrid query fell back to keyword.
 
 | | keyword | vector | hybrid |
 |---|---|---|---|
-| **Passed** | **75%** [66, 82] | 72% [63, 80] | 74% [65, 82] |
-| Cited the expected page | **80%** | 76% | 79% |
-| Said "not sure" on an answerable question | **2 of 97** | 7 of 97 | 3 of 97 |
-| Latency p50 / p95 | **1.3 / 2.8 s** | 1.4 / 3.1 s | 1.5 / 4.0 s |
+| **Passed** | 75% [66, 82] | 72% [63, 80] | 74% [65, 82] |
+| Cited the expected page | 80% | 76% | 79% |
+| Said "not sure" on an answerable question | 2 of 97 | 7 of 97 | 3 of 97 |
+| Latency p50 / p95 | 1.3 / 2.8 s | 1.4 / 3.1 s | 1.5 / 4.0 s |
 
 | Paired difference | passed | wins / losses / ties |
 |---|---|---|
@@ -108,15 +112,38 @@ All 102 search questions, on the same commit (`c16110e`), with **no judge**, so 
 | hybrid − keyword | −1 pt [−6, +4] | 3 / 4 / 95 |
 | hybrid − vector | +2 pts [−4, +9] | 6 / 4 / 92 |
 
-**Decision: keep keyword.** The modes tie on pass@1, and keyword is never worse. Vector adds false "not sure" answers (+5 pts, CI [0, +10]). Hybrid is slower (+0.35 s, CI [+0.17, +0.52]).
+No pass difference is outside noise. Vector adds false "not sure" answers (+5 pts, CI [0, +10]). Hybrid is slower than keyword (+0.35 s, CI [+0.17, +0.52]).
 
-#75 found vector best on retrieval alone. But that test searched with the student's raw question. The agent rewrites questions into keyword-style queries ("Q-drop deadline Spring 2027") before searching, which closes the gap.
+Experiments: **#76 keyword / vector / hybrid · 102 search questions · no judge · c16110e**. These runs predate the fix that stops `numbers_match` from reading list markers like "1." as numbers, which affects all three modes alike.
 
-Experiments: **#76 keyword / vector / hybrid · 102 search questions · no judge · c16110e**.
+### Search alone: raw questions vs the agent's queries
 
-These runs predate the fix that stops `numbers_match` from reading list markers like "1." as numbers. It affects all three modes alike.
+`eval/retrieval.py --queries raw,agent`: each question searched once per mode, with the question as written (raw) and with the first query the agent sent to the expected tool in the keyword experiment (agent). 84 questions; 10 were left out because the agent never called the expected tool. No LLM, no fallbacks.
 
-**Left for #76:** the judge columns (`correctness`, `groundedness`, `retrieval_relevance`), reading 3 questions where the modes differ, and step 6: retrieval with the agent's own queries, reformulation lift and precision@5.
+| hit@5 (MRR@10) | keyword | vector | hybrid |
+|---|---|---|---|
+| Raw question | 65% (0.57) | **83%** (0.75) | 80% (0.68) |
+| Agent's query | 86% (0.75) | 82% (0.75) | **86% (0.78)** |
+| Lift from the agent's rewrite | **+20 pts** [+10, +31] | −1 pt [−7, +5] | +6 pts [−1, +14] |
+
+- **On raw questions, vector and hybrid beat keyword** (+18 and +14 pts hit@5, both CIs above 0), as in #75.
+- **On the agent's queries, they tie** (hybrid − keyword 0 pts [−5, +5]; vector − keyword −4 pts [−12, +4]). Hybrid has the best hit@1 (73% vs 68% and 69%), but within noise.
+- **This explains #75 vs #76.** The agent rewrites questions into keywords ("core curriculum hours"), which helps keyword search a lot and vector search not at all. So keyword catches up once the agent is in the loop.
+- **Vector is weak on the catalog** (33% hit@5 on agent queries vs 89% keyword): every degree plan mentions "core curriculum" and "hours", so the page that defines them gets crowded out. Hybrid keeps most of keyword's catalog hits (78%).
+
+Precision@5 wasn't measured. It needs the judge, and hit@5 already answers the question.
+
+### Questions where the modes differ
+
+15 of 102 questions passed in some modes and failed in others. In 14 of them the difference was `cited_page`: which page was found and cited. Three examples, from the experiments' traces:
+
+- **"how many hours is the core curriculum"**: vector's 4 searches never returned the core curriculum page (degree plans crowded it out), so it answered "not sure". Keyword and hybrid found it first try. **Retrieval.**
+- **"i'll be gone for diwali, can my teacher take points off"**: every mode found the expected page (Appendix IV); for keyword it was the top result. Keyword's answer cited Rule 7 instead, which says the same thing. **Generation**, and arguably a test problem: Rule 7 could go in `also_accept`.
+- **"what do cs majors take freshman fall"**: vector and hybrid found the BS degree plan but ranked the BA plan higher, and the agent answered from the BA plan. Keyword ranked the BS plan near the top and was right. **Retrieval ranking led generation astray.** This is the kind of question hybrid does worse on.
+
+### Judges
+
+`correctness`, `groundedness` and `retrieval_relevance` were skipped on purpose. The search mode changes which page is found, and `cited_page` measures that directly. The judge only adds "right page, wrong answer", which was about 3% of Flash Lite answers and shouldn't depend on the mode. Judging 300 more answers on Groq's free tier would take hours.
 
 ## Test and grader fixes
 
@@ -166,4 +193,5 @@ About 5K tokens per question: a fraction of a cent on paid Gemini Flash Lite, so
 
 - **pass^3 with the judge:** the 3-run check used code graders only.
 - **Judges outside the pass rule:** `relevance`, `groundedness`, `retrieval_relevance`.
-- **The rest of #76:** see above. #74 (failure review) can build on this file's failure list.
+- **The 40-question headline with hybrid:** the numbers above it are keyword, the default when they ran. #76 shows hybrid ties keyword on pass@1.
+- #74 (failure review) can build on this file's failure list.

@@ -195,11 +195,11 @@ def test_professor_grades_uses_the_initial_when_last_names_match(monkeypatch):
         data.professor_grades("MATH 151", "Smith")  # no initial: ask instead of guessing
 
 
-def test_search_mode_defaults_to_keyword_and_rejects_unknown(monkeypatch):
+def test_search_mode_defaults_to_hybrid_and_rejects_unknown(monkeypatch):
     monkeypatch.delenv("AGGIEFLOW_SEARCH", raising=False)
-    assert data.search_mode() == "keyword"
-    monkeypatch.setenv("AGGIEFLOW_SEARCH", " Hybrid ")
     assert data.search_mode() == "hybrid"
+    monkeypatch.setenv("AGGIEFLOW_SEARCH", " Keyword ")
+    assert data.search_mode() == "keyword"
     monkeypatch.setenv("AGGIEFLOW_SEARCH", "semantic")
     with pytest.raises(ValueError, match="keyword, vector, hybrid"):
         data.search_mode()

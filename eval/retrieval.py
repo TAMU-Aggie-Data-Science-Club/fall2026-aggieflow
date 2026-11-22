@@ -12,8 +12,10 @@ and per-question wins/losses/ties against the first mode with a paired
 bootstrap 95% CI. Exits 1 if any vector query still fell back to keyword
 search after retries, because then "vector" results are really keyword ones.
 
-Query sets: `raw` is the question as written. `agent` (the query the agent
-sent, from #73's traces) isn't available until #73 lands.
+Query sets: `raw` is the question as written. `agent` is the first query the
+agent sent to the expected search tool, read from a LangSmith experiment's
+traces (--experiment, e.g. the #76 keyword run). Questions where the agent never
+called that tool are left out of both sets, so raw and agent stay comparable.
 """
 
 import argparse
@@ -34,9 +36,10 @@ TOOL_SOURCE = {
     "search_registrar": "registrar",
     "search_tech_help": "oal",
     "search_degree_plans": "catalog",
+    "search_transportation": "transportation",
 }
 K = 10
-VECTOR_GAP_SECONDS = 0.5  # with a payment method on the Atlas org the embedding limit is about 2,000 a minute
+VECTOR_GAP_SECONDS = 0.1  # Atlas tier 1 allows 1,000 query embeddings a minute; fallbacks are still retried
 RETRIES = 3
 
 
@@ -76,6 +79,26 @@ def bootstrap_ci(diffs: list[float], resamples: int = 1000, seed: int = 0) -> tu
     rng = random.Random(seed)
     means = sorted(sum(rng.choices(diffs, k=len(diffs))) / len(diffs) for _ in range(resamples))
     return means[int(0.025 * resamples)], means[int(0.975 * resamples) - 1]
+
+
+def agent_queries(experiment: str) -> dict[str, str]:
+    """Question id -> the first query the agent sent to that question's expected
+    search tool, in time order, from one LangSmith experiment's traces."""
+    from langsmith import Client
+
+    client = Client()
+    roots, first = {}, {}
+    for run in client.list_runs(project_name=experiment, is_root=True):
+        meta = (run.extra or {}).get("metadata", {})
+        roots[run.trace_id] = (meta.get("ls_example_id"), meta.get("ls_example_tools") or [])  # our question id
+    if not roots:
+        sys.exit(f"no runs in experiment {experiment!r}")
+    tools = sorted(client.list_runs(project_name=experiment, run_type="tool"), key=lambda r: r.start_time)
+    for run in tools:
+        qid, expected = roots.get(run.trace_id, (None, []))
+        if qid and qid not in first and run.name in TOOL_SOURCE and run.name in expected:
+            first[qid] = run.inputs.get("query", "")
+    return first
 
 
 def run_search(data, mode: str, source: str, query: str) -> tuple[list[dict], bool]:
@@ -122,15 +145,19 @@ def table(title: str, rows: dict[str, dict]) -> None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--modes", default="keyword,vector,hybrid")
-    parser.add_argument("--queries", default="raw", help="raw (agent needs #73)")
+    parser.add_argument("--queries", default="raw", help="raw, agent, or raw,agent for both")
+    parser.add_argument("--experiment", help="LangSmith experiment to read agent queries from")
     parser.add_argument("--questions", type=Path, default=QUESTIONS)
     parser.add_argument("--judge", action="store_true", help="also score context precision@5 with the LLM judge")
     parser.add_argument("--judge-sample", type=int, default=0, metavar="N",
                         help="judge only N questions (fixed random sample); 0 = all. Groq's free tier allows ~5 judge calls a minute")
     args = parser.parse_args(argv)
     modes = args.modes.split(",")
-    if args.queries != "raw":
-        parser.error("only --queries raw for now: the agent query set needs #73's traces")
+    sets = args.queries.split(",")
+    if not set(sets) <= {"raw", "agent"}:
+        parser.error("--queries takes raw, agent, or raw,agent")
+    if "agent" in sets and not args.experiment:
+        parser.error("--queries agent needs --experiment")
 
     from dotenv import load_dotenv
 
@@ -147,29 +174,40 @@ def main(argv=None) -> int:
         from judges import retrieval_relevance as judge
 
     qs = tasks(args.questions)
-    print(f"{len(qs)} questions, modes {', '.join(modes)}, k={K}")
+    agent = {}
+    if "agent" in sets:
+        agent = agent_queries(args.experiment)
+        missing = [q["id"] for q in qs if q["id"] not in agent]
+        qs = [q for q in qs if q["id"] in agent]
+        print(f"agent queries from {args.experiment}; left out {len(missing)} questions where the agent "
+              f"never called the expected tool: {', '.join(missing) or 'none'}")
+    cols = [f"{m}/{qs_}" for qs_ in sets for m in modes] if len(sets) > 1 else modes
+    query_for = lambda q, qset: agent[q["id"]] if qset == "agent" else q["question"]  # noqa: E731
+    print(f"{len(qs)} questions, modes {', '.join(modes)}, queries {', '.join(sets)}, k={K}")
     judged = {q["id"] for q in qs}
     if judge and 0 < args.judge_sample < len(qs):
         judged = set(random.Random(0).sample(sorted(judged), args.judge_sample))
         print(f"precision@5 on a sample of {len(judged)} questions")
-    ranks = {m: {} for m in modes}  # mode -> question id -> rank
-    precision = {m: [] for m in modes}
+    ranks = {c: {} for c in cols}  # column -> question id -> rank
+    precision = {c: [] for c in cols}
     fallbacks = 0
     for q in qs:
-        for m in modes:
-            results, fell_back = run_search(data, m, q["source"], q["question"])
-            fallbacks += fell_back
-            ranks[m][q["id"]] = rank(results, q["source_url"])
-            if judge and q["id"] in judged and (p := precision_at_5(judge, q["question"], results)) is not None:
-                precision[m].append(p)
-        print(f"  {q['id']}: " + ", ".join(f"{m} {ranks[m][q['id']] or '-'}" for m in modes), flush=True)
+        for qset in sets:
+            for m in modes:
+                c = f"{m}/{qset}" if len(sets) > 1 else m
+                results, fell_back = run_search(data, m, q["source"], query_for(q, qset))
+                fallbacks += fell_back
+                ranks[c][q["id"]] = rank(results, q["source_url"])
+                if judge and q["id"] in judged and (p := precision_at_5(judge, q["question"], results)) is not None:
+                    precision[c].append(p)
+        print(f"  {q['id']}: " + ", ".join(f"{c} {ranks[c][q['id']] or '-'}" for c in cols), flush=True)
 
     ids = [q["id"] for q in qs]
     overall = {}
-    for m in modes:
-        overall[m] = metrics([ranks[m][i] for i in ids])
+    for c in cols:
+        overall[c] = metrics([ranks[c][i] for i in ids])
         if judge:
-            overall[m]["prec@5"] = sum(precision[m]) / len(precision[m]) if precision[m] else float("nan")
+            overall[c]["prec@5"] = sum(precision[c]) / len(precision[c]) if precision[c] else float("nan")
     table("Overall", overall)
 
     groups = defaultdict(list)
@@ -178,20 +216,29 @@ def main(argv=None) -> int:
         for t in q.get("tags", []):
             groups[f"tag {t}"].append(q["id"])
     for name, members in sorted(groups.items()):
-        table(f"{name} ({len(members)})", {m: metrics([ranks[m][i] for i in members]) for m in modes})
+        table(f"{name} ({len(members)})", {c: metrics([ranks[c][i] for i in members]) for c in cols})
 
-    base = modes[0]
-    for m in modes[1:]:
-        rr = lambda r: 1 / r if r else 0.0  # noqa: E731
-        hit5 = lambda r: float(r is not None and r <= 5)  # noqa: E731
-        d_mrr = [rr(ranks[m][i]) - rr(ranks[base][i]) for i in ids]
-        d_hit = [hit5(ranks[m][i]) - hit5(ranks[base][i]) for i in ids]
+    rr = lambda r: 1 / r if r else 0.0  # noqa: E731
+    hit5 = lambda r: float(r is not None and r <= 5)  # noqa: E731
+
+    def paired(a: str, b: str) -> None:
+        d_mrr = [rr(ranks[a][i]) - rr(ranks[b][i]) for i in ids]
+        d_hit = [hit5(ranks[a][i]) - hit5(ranks[b][i]) for i in ids]
         wins, losses = sum(d > 0 for d in d_mrr), sum(d < 0 for d in d_mrr)
         lo_h, hi_h = bootstrap_ci(d_hit)
         lo_m, hi_m = bootstrap_ci(d_mrr)
-        print(f"\n{m} vs {base}: {wins} wins, {losses} losses, {len(ids) - wins - losses} ties (by rank)")
+        print(f"\n{a} vs {b}: {wins} wins, {losses} losses, {len(ids) - wins - losses} ties (by rank)")
         print(f"  hit@5 diff {sum(d_hit) / len(ids):+.3f}, 95% CI [{lo_h:+.3f}, {hi_h:+.3f}]")
         print(f"  MRR diff   {sum(d_mrr) / len(ids):+.3f}, 95% CI [{lo_m:+.3f}, {hi_m:+.3f}]")
+
+    for qset in sets:
+        col = (lambda m: f"{m}/{qset}") if len(sets) > 1 else (lambda m: m)
+        for m in modes[1:]:
+            paired(col(m), col(modes[0]))
+    if len(sets) > 1:
+        print("\nReformulation lift (agent query vs raw question, same mode):")
+        for m in modes:
+            paired(f"{m}/agent", f"{m}/raw")
 
     print(f"\nfallbacks: {fallbacks}")
     return 1 if fallbacks else 0

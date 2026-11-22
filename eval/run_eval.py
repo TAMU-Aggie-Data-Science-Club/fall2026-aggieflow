@@ -431,7 +431,7 @@ def run_info(mode: str, experiment: str) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=MODES, default="keyword", help="Atlas search mode (default keyword)")
+    parser.add_argument("--mode", choices=MODES, default="hybrid", help="Atlas search mode (default hybrid)")
     parser.add_argument("--repetitions", type=int, default=3, help="runs per task (default 3)")
     parser.add_argument("--questions", type=Path, default=score.QUESTIONS,
                         help="a .jsonl file or a folder of them (default: eval/questions)")
