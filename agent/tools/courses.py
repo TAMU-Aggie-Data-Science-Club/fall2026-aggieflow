@@ -24,7 +24,7 @@ def get_course_grades(course: str) -> list[Passage]:
     """Get a course's past grade distribution from anex.us across all
     professors: average GPA, percent A's, Q-drop rate, and professors ranked
     by average GPA since 2023. Use for 'is this class hard' or 'who's the
-    easiest professor'. `course` is a code like 'MATH 151'."""
+    easiest professor'. The easiest professor has the HIGHEST average GPA. `course` is a code like 'MATH 151'."""
     return data.grades(course)
 
 
@@ -32,7 +32,9 @@ def get_course_grades(course: str) -> list[Passage]:
 def get_professor_grades(course: str, professor: str) -> list[Passage]:
     """Get one professor's grade history in one course from anex.us, semester
     by semester since 2023. `course` is a code like 'CHEM 107'; `professor` is
-    a last name like 'Martinez'. To compare professors, use get_course_grades."""
+    a last name like 'Martinez'. To compare professors, use get_course_grades.
+    If the name isn't found it may be misspelled: call get_course_grades to see
+    the exact names of the course's professors."""
     return data.professor_grades(course, professor)
 
 
