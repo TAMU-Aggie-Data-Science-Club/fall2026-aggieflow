@@ -152,7 +152,8 @@ def test_not_sure_task_with_no_tools():
     s = scores(run_eval.grade(meta, ref, good, None))
     assert (s["not_sure_correct"], s["tool_match"], s["cited_page"], s["passed"]) == (1, 1, None, 1)
     searched = {**good, "calls": [call("search_registrar", query="sbisa")]}
-    assert scores(run_eval.grade(meta, ref, searched, None))["passed"] == 0  # tool_match fails
+    s = scores(run_eval.grade(meta, ref, searched, None))
+    assert (s["tool_match"], s["passed"]) == (0, 1)  # tool_match is recorded, not a gate
 
 
 def test_citing_an_also_accept_page_passes_cited_page():

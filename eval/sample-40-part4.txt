@@ -1,0 +1,11 @@
+# Part 4 of 4: 10 of the 40 questions in eval/sample-40.txt, for eval/judge_saved.py.
+anex-rushilsagar-10
+catalog-aguw0kie124-10
+oal-klee-SAM-12
+registrar-01
+student-rules-kaushalp55-05
+student-rules-rafperez010-10
+transportation-krishjayanth-05
+extra-krishjayanth-08
+extra-krishjayanth-15
+extra-krishjayanth-37

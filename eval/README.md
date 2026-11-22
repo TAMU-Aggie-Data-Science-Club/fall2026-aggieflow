@@ -80,12 +80,12 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
 - **Dataset:** the questions sync to the LangSmith dataset `aggieflow-questions`. New ids are added, and an edited question's example is updated to match. `known-gap` tasks are skipped.
 - **Code graders** (1 or 0):
   - `cited_page`
+  - `tool_match`: the agent called only the task's expected tools. Recorded but never fails a task, since an extra tool call can still give a right answer.
   - `not_sure_correct`: a `NOT_SURE` task's answer says "not sure". Linking related pages is fine.
-  - `tool_match`
   - `numbers_match`, on grade tasks (expected tools include `get_course_grades` or `get_professor_grades`). Every number the answer states must match the reference or the passages it retrieved: GPA to 2 decimals, % within 1 point, counts within 1%. It must also name the reference's first professor. A short answer passes; a wrong or made-up number fails.
 - **LLM judges:** the four above. `correctness` is skipped on grade tasks, where `numbers_match` grades the answer.
 - **Path metrics:** `rounds`, `tool_call_count`, `redundant_calls`, `tool_error_rate`, `hit_round_limit` and `recovered`. These are recorded but never fail a task.
-- **`passed`:** a run passes when every outcome grader that applies passes. Those are `cited_page` (or `not_sure_correct`), `numbers_match` (or `correctness`), and `tool_match`. A judge's "unknown" doesn't count either way.
+- **`passed`:** a run passes when every outcome grader that applies passes. Those are `cited_page` (or `not_sure_correct`) and `numbers_match` (or `correctness`). A judge's "unknown" doesn't count either way.
 - **Run metrics** (recorded, never fail a task):
   - `latency_s`: seconds for the attempt that succeeded, so time spent waiting out rate limits isn't counted.
   - `fell_back`: 1 if a vector or hybrid search fell back to keyword search during the run.
@@ -106,6 +106,19 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
   - `--ids eval/sample-40.txt` runs only the question ids listed in a file (one per line, `#` comments allowed).
   - `--no-upload` runs locally without a LangSmith key.
 - **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
+
+### Judging saved answers
+
+`eval/judge_saved.py` runs all four judges on answers the agent already gave, so you don't run the agent again. You need only `GROQ_API_KEY`.
+
+- **The answers:** `eval/saved/pass3-aa05068.jsonl`. These are the 40 sample questions from the pass^3 run (commit `aa05068`, first run), with the passages the agent retrieved.
+- **The questions:** `eval/sample-40.txt`, split into `eval/sample-40-part1.txt` to `part4.txt` with 10 questions each, one per member. The references come from `eval/questions/`.
+
+```bash
+uv run python eval/judge_saved.py judge --ids eval/sample-40-part1.txt
+```
+
+It writes `eval/results/judged-part1.jsonl`. Merge the four parts with `eval/summarize.py eval/results/judged-*.jsonl`.
 
 ### Merging and comparing results
 

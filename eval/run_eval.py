@@ -11,7 +11,8 @@
    - code graders, 1 or 0:
      cited_page        an answerable task cites its source_url (or an also_accept page)
      not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine)
-     tool_match        it called tools only from the task's "tools" (and none if that's [])
+     tool_match        it called tools only from the task's "tools" (and none if that's []).
+                       Recorded, never fails a task: an extra tool call can still give a right answer.
      numbers_match     grade tasks only: every number the answer states matches the reference or
                        the passages it retrieved (GPA to 2 decimals, % within 1 point, counts within
                        1%), and it names the reference's first professor. Short answers pass;
@@ -25,7 +26,7 @@
      wrongly_not_sure (an answerable task said "not sure"), answered_out_of_scope (a NOT_SURE
      task answered anyway)
    - passed: the run passes when every outcome grader that applies passes: cited_page or
-     not_sure_correct, numbers_match or correctness, and tool_match. A judge's "unknown" doesn't count.
+     not_sure_correct, and numbers_match or correctness. A judge's "unknown" doesn't count.
 4. Prints pass@1 with a 95% CI (bootstrap over questions) and pass^k (passed all k runs) by
    source, set and tag, plus latency p50/p95, fallbacks and refusal errors.
 5. Writes one JSON line per run to --out (default eval/results/<experiment>.jsonl).
@@ -285,7 +286,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
                                         (None, "answerable task"))
 
     gates = ["not_sure_correct" if expects_not_sure else "cited_page",
-             "numbers_match" if grade_task else "correctness", "tool_match"]
+             "numbers_match" if grade_task else "correctness"]  # tool_match grades the path, so it's only recorded
     scores = {g: results[g][0] for g in gates if g in results and results[g][0] is not None}
     failed = [g for g, s in scores.items() if s != 1]
     results["passed"] = (int(not failed), f"failed {failed}" if failed else f"passed {sorted(scores)}")
