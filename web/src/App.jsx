@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { askAgent } from "./api.js";
 import AnswerText from "./AnswerText.jsx";
+import GradeChart from "./GradeChart.jsx";
 
 const TRY_ASKING = [
   "Who should I take for MATH 151?",
@@ -300,6 +301,9 @@ function Turn({ turn, bubbleRef, retryDisabled, onRetry }) {
             <span className="answer-name">AggieFlow</span>
           </div>
           <AnswerText text={turn.answer} />
+          {turn.grades.map((chart) => (
+            <GradeChart key={chart.course} chart={chart} />
+          ))}
           {turn.sources.length > 0 && <Sources sources={turn.sources} />}
         </article>
       )}

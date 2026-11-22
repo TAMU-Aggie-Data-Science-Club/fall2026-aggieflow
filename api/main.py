@@ -7,9 +7,34 @@ from pydantic import BaseModel, Field
 
 app = FastAPI()
 
+from agent import data
 from agent.run import answer
 
 logger = logging.getLogger(__name__)
+GRADE_TOOLS = {"get_course_grades", "get_professor_grades"}
+
+
+def grade_charts(calls: list[dict]) -> list[dict]:
+    """One grade chart (data.grade_chart) per course the agent looked up on anex.us, in
+    the order it looked them up. The tool already fetched and cached the course, so this
+    makes no new request. A chart that can't be built is skipped: it never fails the answer."""
+    charts, seen = [], set()
+    for call in calls:
+        course = call["args"].get("course") if call["name"] in GRADE_TOOLS and not call.get("error") else None
+        if not isinstance(course, str):
+            continue
+        try:
+            key = data.parse_course(course)
+            if key in seen:
+                continue
+            seen.add(key)
+            chart = data.grade_chart(course)
+        except Exception:
+            logger.warning("No grade chart for %r", course, exc_info=True)
+            continue
+        if chart:
+            charts.append(chart)
+    return charts
 #cosr
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
@@ -70,6 +95,7 @@ def chat(request: request):
             "answer": answer_text,
             "sources": sources,
             "tools": tools,
+            "grades": grade_charts(result["calls"]),
         }
     except Exception:
         logger.exception("Chat request failed")

@@ -272,6 +272,20 @@ def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+def ranked_professors(sections):
+    """[(professor, Tally)] for professors who taught since RECENT_SINCE_YEAR, counting
+    only those sections, with at least MIN_RANKED_STUDENTS graded students; highest
+    GPA first (ties by name). The course summary's ranking and the UI's grade chart
+    both come from this, so they always agree."""
+    recent = defaultdict(Tally)
+    for s in sections:
+        year = str(s.get("year", ""))
+        if year.isdigit() and int(year) >= RECENT_SINCE_YEAR:
+            recent[(s.get("prof") or "UNKNOWN").strip()].add(s)
+    ranked = [(p, t) for p, t in recent.items() if t.graded >= MIN_RANKED_STUDENTS]
+    return sorted(ranked, key=lambda pt: (-pt[1].gpa, pt[0]))
+
+
 def course_passages(dept, number, sections, fetched_at):
     code = f"{dept} {number}"
     url = PAGE_URL.format(dept=dept, number=number)
@@ -296,23 +310,13 @@ def course_passages(dept, number, sections, fetched_at):
         (p for p in by_prof if any(int(y) >= RECENT_SINCE_YEAR for y, _ in by_prof_term[p])),
     )
 
-    def recent_tally(prof):
-        t = Tally()
-        for (year, _), tally in by_prof_term[prof].items():
-            if int(year) >= RECENT_SINCE_YEAR:
-                for g in GRADES + ["Q"]:
-                    t.counts[g] += tally.counts[g]
-        return t
-
     # Course summary.
     lines = [
         f"Grade distribution for {code} at Texas A&M from anex.us, {term_span(first, last)}: "
         f"{plural(overall.sections, 'section')} taught by {plural(len(by_prof), 'professor')}. "
         f"Overall: {overall.describe()}."
     ]
-    ranked = [(p, recent_tally(p)) for p in recent]
-    ranked = [(p, t) for p, t in ranked if t.graded >= MIN_RANKED_STUDENTS]
-    ranked.sort(key=lambda pt: -pt[1].gpa)
+    ranked = ranked_professors(sections)
     if ranked:
         parts = [f"{p} {t.gpa:.2f} ({t.graded} students)" for p, t in ranked]
         lines.append(
