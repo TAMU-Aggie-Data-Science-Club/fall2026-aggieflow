@@ -425,7 +425,7 @@ _RMP_QUERY = """query($text: String!, $schoolID: ID!, $reviews: Int!) {
 }"""
 
 _rmp_lock = threading.Lock()
-_rmp_cache: dict[str, tuple[float, list[Passage]]] = {}
+_rmp_cache: dict[str, tuple[float, list[dict], str]] = {}  # name -> (time, professors, fetched_at)
 _rmp_last_request = 0.0
 
 
@@ -481,28 +481,44 @@ def _rmp_passage(t: dict, fetched_at: str) -> Passage:
     }
 
 
-def professor_ratings(professor: str) -> list[Passage]:
+def _taught(t: dict, dept: str, number: str) -> bool:
+    """Whether any of a professor's reviews is for this course. Review labels
+    vary ('CSCE221', 'CSCE 221', '221'), so a label without a department counts."""
+    for e in t["ratings"]["edges"]:
+        m = re.fullmatch(r"([A-Za-z]*)\s*-?\s*(\d{3})[A-Za-z]?", e["node"]["class"].strip())
+        if m and m.group(2) == number and m.group(1).upper() in ("", dept):
+            return True
+    return False
+
+
+def professor_ratings(professor: str, course: str | None = None) -> list[Passage]:
     """RateMyProfessors ratings and newest reviews for Texas A&M professors
-    matching a name, most-rated first. Professors with no ratings are left out."""
+    matching a name, most-rated first. Professors with no ratings are left out.
+    With a course, only professors with a review for it are kept, unless none have one."""
     key = " ".join(_WORD.findall(professor.lower()))
     if not key:
         raise ValueError("give a professor's name, like 'Leyk' or 'Teresa Leyk'")
+    wanted = parse_course(course) if course else None
     with _rmp_lock:
         hit = _rmp_cache.get(key)
         if hit and time.monotonic() - hit[0] < RMP_CACHE_SECONDS:
-            return hit[1]
-        fetched_at = _anex_module().now_utc()
-        raw = _fetch_rmp(key)
-        try:
-            teachers = [e["node"] for e in raw["data"]["newSearch"]["teachers"]["edges"]]
-            teachers = [t for t in teachers if t["numRatings"] > 0]
-            # RMP matches any one word ('John Keyser' finds every John), so
-            # professors whose last name was asked for come first.
-            asked = set(key.split())
-            teachers.sort(key=lambda t: (not set(_WORD.findall(t["lastName"].lower())) <= asked,
-                                         -t["numRatings"]))
-            found = [_rmp_passage(t, fetched_at) for t in teachers[:RMP_MAX_PROFESSORS]]
-        except (KeyError, TypeError) as err:
-            raise RuntimeError("RateMyProfessors changed its response format; the tool needs updating") from err
-        _rmp_cache[key] = (time.monotonic(), found)
-        return found
+            teachers, fetched_at = hit[1], hit[2]
+        else:
+            fetched_at = _anex_module().now_utc()
+            raw = _fetch_rmp(key)
+            try:
+                teachers = [e["node"] for e in raw["data"]["newSearch"]["teachers"]["edges"]]
+                teachers = [t for t in teachers if t["numRatings"] > 0]
+                # RMP matches any one word ('John Keyser' finds every John), so
+                # professors whose last name was asked for come first.
+                asked = set(key.split())
+                teachers.sort(key=lambda t: (not set(_WORD.findall(t["lastName"].lower())) <= asked,
+                                             -t["numRatings"]))
+                teachers = teachers[:RMP_MAX_PROFESSORS]
+                [_rmp_passage(t, fetched_at) for t in teachers]  # check the shape before caching
+            except (KeyError, TypeError) as err:
+                raise RuntimeError("RateMyProfessors changed its response format; the tool needs updating") from err
+            _rmp_cache[key] = (time.monotonic(), teachers, fetched_at)
+    if wanted:
+        teachers = [t for t in teachers if _taught(t, *wanted)] or teachers
+    return [_rmp_passage(t, fetched_at) for t in teachers]

@@ -42,17 +42,19 @@ def get_professor_grades(course: str, professor: str) -> list[Passage]:
 
 
 @tool
-def get_professor_ratings(professor: str) -> list[Passage]:
+def get_professor_ratings(professor: str, course: str | None = None) -> list[Passage]:
     """Get what students say about a Texas A&M professor on RateMyProfessors:
     overall quality, difficulty, percent who would take them again, and their
     newest reviews (each with the course it was for). Use for 'is this
     professor good', 'how do they teach', 'would people take them again', and
     for choosing between professors. `professor` is a name like 'Leyk'
-    or 'Teresa Leyk'; several professors may match, so check the department.
+    or 'Teresa Leyk'. If the question names a course, pass it as `course`
+    (like 'CSCE 120'): only professors with reviews for that course are kept.
+    Several professors may still match, so check the department.
     When the question names a course, also call get_professor_grades (one
     professor) or get_course_grades (choosing one), unless it only asks how
     they teach."""
-    return data.professor_ratings(professor)
+    return data.professor_ratings(professor, course)
 
 
 TOOLS = [get_course, get_course_grades, get_professor_grades, get_professor_ratings]

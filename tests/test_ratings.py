@@ -32,3 +32,10 @@ def test_changed_response_format_errors(monkeypatch):
     monkeypatch.setattr(data, "_fetch_rmp", lambda name: {"data": None})
     with pytest.raises(RuntimeError):
         data.professor_ratings("Leyk")
+
+
+def test_course_keeps_professors_reviewed_for_it():
+    titles = lambda course: [p["title"] for p in data.professor_ratings("Leyk", course)]  # noqa: E731
+    assert titles("CSCE 221") == ["Teresa Leyk on RateMyProfessors"]
+    assert titles("csce120") == ["Zbigniew Leyk on RateMyProfessors"]  # review labeled just '120'
+    assert len(titles("MATH 151")) == 2  # no reviews for it: keep everyone
