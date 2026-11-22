@@ -1,126 +1,151 @@
 # Agent results (#89)
 
 ```
-setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit 69e9466; LangSmith tracing on
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit c16110e; LangSmith tracing on
 ```
 
-**Gemini 3.5 Flash Lite passes 92% (37 of 40), 95% CI [82%, 100%], with a typical answer in 1.2 seconds.** It's the agent's model now.
+**The agent (Gemini 3.5 Flash Lite, keyword search) passes 95% (38 of 40), 95% CI [88%, 100%], with a typical answer in 1.3 seconds.** Both failures are right answers that made an extra tool call. No answer in the sample is wrong.
 
-That's 82% (33 of 40) from the full run, plus 4 questions rerun after fixes: 3 had wrong reference answers, and the garage question's data and decline rule changed. All 4 pass (see [Rerun](#rerun-after-fixes)). The 3 that still fail are right answers that broke the strict `tool_match` rule. The comparison with 3.6 Flash below uses the original 82%, since both models ran on the same questions.
+**Every answer:** [`eval/flash-lite-40.csv`](flash-lite-40.csv) has one row per question: the question, the expected and actual answer, pages cited, tools called, every score, the latency and the experiment it came from. Open it in Excel or Google Sheets and filter on `passed`.
 
-LangSmith experiments (in the `aggieflow-questions` dataset): **Gemini 3.5 Flash Lite · 40 questions · keyword · 69e9466** and **Gemini 3.6 Flash · 40 questions · keyword · 69e9466**. Runs are named `agent-<mode>-<commit>-<id>` and then renamed in LangSmith to say what they are. Command:
+LangSmith experiments, in the `aggieflow-questions` dataset:
+- **Gemini 3.5 Flash Lite · 40 questions · citation fix · c16110e**: the run above
+- **Gemini 3.5 Flash Lite · rerun 3 after grader fixes · fb3e7f6**: 3 questions rerun after the fixes in [Test and grader fixes](#test-and-grader-fixes). All 3 pass.
+
+Runs are named `agent-<mode>-<commit>-<id>` and renamed in LangSmith afterward to say what they are. Command:
 
 ```
-AGGIEFLOW_MODEL=google_genai:gemini-3.5-flash-lite uv run python eval/run_eval.py --ids eval/sample-40.txt --judges correctness --repetitions 1
+uv run python eval/run_eval.py --ids eval/sample-40.txt --judges correctness --repetitions 1
 ```
 
 ## How we got here
 
-1. **gpt-oss-120b on Groq** (commit `829045b`): 58% (21 of 36). Its failures led to the routing fixes and the two citation-link fixes below. We dropped it: on Groq's free tier, answers waited on rate limits, and the daily limit ran out after about 37 questions.
-2. **Fixes** (commit `69e9466`): sharper tool descriptions (graduation and Q-drop deadline → Registrar, ICD/CD → degree plans, "easiest" = highest GPA, misspelled professor names), and 5 broken test questions fixed.
-3. **Gemini 3.6 Flash vs 3.5 Flash Lite**, same 40 questions, same commit. Flash Lite won.
+| Step | Commit | pass@1 | What changed |
+|---|---|---|---|
+| gpt-oss-120b on Groq | `829045b` | 58% (21 of 36) | First run. Dropped: too slow on the free tier, and the daily limit ran out after about 37 questions. |
+| Gemini 3.6 Flash | `69e9466` | 72% | After the routing fixes and 5 broken questions |
+| Gemini 3.5 Flash Lite | `69e9466` | 82% | Same questions and commit as 3.6 Flash. Picked as the model. |
+| Flash Lite + citation fix | `c16110e` | 88%, then **95%** after fixing 3 test problems | The prompt now requires full links |
 
-The model and the fixes changed together, so these results don't show how much the fixes alone helped.
+The model and the fixes changed together, so these numbers don't show how much each fix helped on its own. Only the 3.6 Flash vs Flash Lite row is a clean comparison.
+
+**Fixes made along the way:**
+- **Routing:** graduation and the Q-drop deadline go to `search_registrar`, ICD/CD lists to `search_degree_plans`, "easiest professor" means the highest GPA, and a misspelled professor name falls back to `get_course_grades`.
+- **Data:** the collector had saved the real-time garage-count page, and the agent quoted a stale "364 open spots". The page is now skipped and was deleted from Atlas.
+- **Citations:** see [Bugs the graders don't catch](#bugs-the-graders-dont-catch).
 
 ## What's different from the plan in #89
 
-- **40 questions, not 127.** `eval/sample-40.txt` covers every source file and tag, `NOT_SURE` and grade questions, the tasks #92 fixed, and the failures #92 left for #74. It leaves out the 3 questions too large for Groq's free tier and the known-gap question.
+- **40 questions, not 127.** `eval/sample-40.txt` covers every source file and tag, `NOT_SURE` and grade questions, the tasks #92 fixed, and the failures #92 left for #74.
 - **1 run per question.** pass^3 and flaky questions weren't measured.
 - **Only the `correctness` judge.** It's the only judge in the pass rule, so `passed` is the same. `relevance`, `groundedness` and `retrieval_relevance` weren't measured.
+- **Decline rule (decided on #89):** a "not sure" answer that links related pages counts as declining. Before, it had to cite nothing.
 
-**Every answer:** [`eval/flash-lite-40.csv`](flash-lite-40.csv) has one row per question: the question, the expected and actual answer, pages cited, tools called, every score and the latency. It's the full run, with the 4 reruns swapped in. Open it in Excel or Google Sheets and filter on `passed`.
+## Current agent: details
+
+From the `c16110e` run, before the 3 reruns, so these slightly understate the current agent:
+
+| Metric | Result |
+|---|---|
+| `cited_page` | 97% |
+| `correctness` (judge) | 97% |
+| `tool_match` | 95% |
+| Said "not sure" on an answerable question | 0 of 33 |
+| Answered a `NOT_SURE` question | 0 of 7 |
+| Answers with an inline link | 34 of 34 |
+| Latency p50 / p95 | 1.3 s / 2.2 s |
+
+**The 2 failures**, both right answers that failed the strict `tool_match` rule:
+- `anex-rushilsagar-10` ("is professor kim a good teacher"): also pulled MATH 151 grades, which made the answer better.
+- `student-rules-kaushalp55-05` (withdrawing after Q-drop day): searched Registrar as well as Student Rules.
 
 ## The two Gemini models
 
-From `eval/compare.py --allow-setup-change`, paired over the same 40 questions:
+Paired over the same 40 questions on commit `69e9466` (before the citation fix), from `eval/compare.py --allow-setup-change`:
 
 | | 3.6 Flash | 3.5 Flash Lite | Lite − 3.6 (95% CI) |
 |---|---|---|---|
 | **Passed** | 72% | **82%** | +10 pts [−3, +23] |
 | Latency p50 / p95 | 4.3 s / 8.1 s | **1.2 s / 2.1 s** | −3.4 s [−3.9, −2.9] |
 | Answered a `NOT_SURE` question | 3 of 7 | **1 of 7** | |
-| Said "not sure" on an answerable question | 0 of 33 | 0 of 33 | |
-| `cited_page` | 97% | 97% | |
-| `correctness` | 88% | 91% | |
 | `tool_match` | 80% | 90% | |
 | Tool calls per question | 1.45 | 1.12 | −0.33 [−0.55, −0.12] |
 
-Lite won 5 questions, lost 1 and tied 34. The pass difference is within noise (the CI crosses 0), but Lite is clearly faster and never worse, so it's the pick.
+Lite won 5 questions, lost 1 and tied 34. The pass difference is within noise, but Lite is clearly faster and never worse.
 
-## Flash Lite by source
+## Search mode (#76, partly done)
 
-| Source | Questions | Passed |
+All 102 search questions, on the same commit (`c16110e`), with **no judge**, so `passed` = `cited_page` + `tool_match` (+ `numbers_match`). No vector or hybrid query fell back to keyword.
+
+| | keyword | vector | hybrid |
+|---|---|---|---|
+| **Passed** | **75%** [66, 82] | 72% [63, 80] | 74% [65, 82] |
+| Cited the expected page | **80%** | 76% | 79% |
+| Said "not sure" on an answerable question | **2 of 97** | 7 of 97 | 3 of 97 |
+| Latency p50 / p95 | **1.3 / 2.8 s** | 1.4 / 3.1 s | 1.5 / 4.0 s |
+
+| Paired difference | passed | wins / losses / ties |
 |---|---|---|
-| anex | 4 | 3 |
-| catalog | 4 | 4 |
-| extra | 10 | 9 |
-| oal | 4 | 3 |
-| registrar | 6 | 6 |
-| student-rules | 8 | 6 |
-| transportation | 4 | 2 |
+| vector − keyword | −3 pts [−10, +4] | 5 / 8 / 89 |
+| hybrid − keyword | −1 pt [−6, +4] | 3 / 4 / 95 |
+| hybrid − vector | +2 pts [−4, +9] | 6 / 4 / 92 |
 
-With 4–10 questions per source, don't rank sources from this.
+**Decision: keep keyword.** The modes tie on pass@1, and keyword is never worse. Vector adds false "not sure" answers (+5 pts, CI [0, +10]). Hybrid is slower (+0.35 s, CI [+0.17, +0.52]).
 
-## Flash Lite's 7 failures
+#75 found vector best on retrieval alone. But that test searched with the student's raw question. The agent rewrites questions into keyword-style queries ("Q-drop deadline Spring 2027") before searching, which closes the gap.
 
-| Question | Step | What happened |
+Experiments: **#76 keyword / vector / hybrid · 102 search questions · no judge · c16110e**.
+
+These runs predate the fix that stops `numbers_match` from reading list markers like "1." as numbers. It affects all three modes alike.
+
+**Left for #76:** the judge columns (`correctness`, `groundedness`, `retrieval_relevance`), reading 3 questions where the modes differ, and step 6: retrieval with the agent's own queries, reformulation lift and precision@5.
+
+## Test and grader fixes
+
+The eval was wrong more often than the agent. Every fix below turned a failure on a correct answer into a pass:
+
+| Question | Problem | Fix |
 |---|---|---|
-| `transportation-krishjayanth-10` | **data** | "how many open spots in west campus garage right now": answered "364" from the real-time garage page, which we collected once. The number is a stale snapshot. |
-| `extra-krishjayanth-31` | **test** | Right answer. The source says a router must have its wireless off; the reference left that out, so the judge failed it. Fixed, passes. |
-| `student-rules-kaushalp55-02` | **test** | Right answer: Rule 10.13.2 counts a U as an F. The reference said it vaguely and the judge misread it. Fixed, passes. |
-| `transportation-krishjayanth-05` | **test** | Right answer, cited the bus service page, which has the same fare text. Added to `also_accept`, passes. |
-| `student-rules-kaushalp55-05` | strict tool rule | Right answer; also searched Registrar first |
-| `anex-rushilsagar-10` | strict tool rule | Right answer; also pulled grades for MATH 151 |
-| `oal-klee-SAM-12` | strict tool rule | Rightly said not sure; searched transportation for "housing" first |
-
-So **1 real wrong answer**, a data problem, not the model, and now fixed. Three are right answers that failed the strict `tool_match` rule, and 3 were test problems.
-
-## Rerun after fixes
-
-Experiment **Gemini 3.5 Flash Lite · rerun 4 after reference fixes · 4e20cf9** (commit `4e20cf9`; the agent changed only by the passage-id link fix):
-
-| Question | Before | After |
-|---|---|---|
-| `extra-krishjayanth-31` | fail | **pass** |
-| `student-rules-kaushalp55-02` | fail | **pass** |
-| `transportation-krishjayanth-05` | fail | **pass** |
-| `transportation-krishjayanth-10` (garage) | fail: said "364 spots" | **pass**: says it's not sure and links parking pages (experiment **Gemini 3.5 Flash Lite · rerun garage question · 4512eb2**) |
-
-**Rule change (decided on #89):** a "not sure" answer that links related pages now counts as declining. Before, it had to cite nothing. This changes no other question in either Gemini run. The garage question also goes back to its file's default tool (`search_transportation`), since searching before declining is reasonable here.
+| `extra-krishjayanth-31` | The reference left out that a router needs its wireless off | Reference matches the source |
+| `student-rules-kaushalp55-02` | The reference was vague about U grades counting as F | Reference says it plainly (Rule 10.13.2) |
+| `extra-krishjayanth-17` | The reference said "Yes" to "will that hurt my grade" | Now "No, as long as…" |
+| `transportation-krishjayanth-05`, `registrar-08` | A second page states the same fact | Added to `also_accept` |
+| `anex-rushilsagar-03` | `numbers_match` read "1. 2. 3." list markers as numbers | Grader skips list markers |
+| `transportation-krishjayanth-10`, `student-rules-rafperez010-10` | `NOT_SURE` tasks had the wrong expected tools | Fixed |
+| `catalog-aguw0kie124-03`, `anex-rushilsagar-10` | The references asked for facts the question didn't | Trimmed |
+| `registrar-06` | Student Rule 1 says the same as the expected page | Added to `also_accept` |
 
 ## Bugs the graders don't catch
 
-Both citation bugs are fixed in code, and neither changes the scores, because the graders don't read inline links.
+All fixed in `agent/checks.py` or the system prompt. The graders don't read inline links, so none of these changed a score.
 
-- **`【】` links (120b):** the link regex read `】` as part of the URL, so a real link became `[link removed: not from a source]` in 12 of 36 answers. Fixed.
-- **Passage ids as citations (Flash Lite):** 7 of 34 answers cite `(student-rules:rule10:13)` instead of a link. `agent/checks.py` now swaps a known passage id for its URL. Fixed.
-
-- **Answers without inline links (Flash Lite, not fixed):** 15 of 33 answers cite nothing inline, or only a bare domain like `(anex.us)`. When an answer cites nothing, the check lists *every* page the search returned, including unrelated news pages (example A below). `cited_page` still passes, because the expected page is among them. Possible fixes: a firmer citation rule in the system prompt, or listing only the pages the answer used.
+- **`【】` links (gpt-oss-120b):** the link regex read `】` as part of the URL, so real links became `[link removed: not from a source]` in 12 of 36 answers.
+- **Passage ids as citations (Flash Lite):** `(student-rules:rule10:13)` instead of a link, in 7 of 34 answers. Known ids are now swapped for their URL.
+- **Missing inline links (Flash Lite):** 15 of 33 answers had no inline link, so every search result was listed as a source, including unrelated news pages. After the prompt fix, it's 0 of 34. Bare site names like `(anex.us)` also become the link when only one source is from that site.
 
 ## Example traces
 
-Taken from the LangSmith experiments above; the full rows are in the CSV.
+From the experiments above; the full rows are in the CSV.
 
-**A. Pass: "how do i get my laptop, xbox and tv all online in my room at the commons"** (2.7 s)
-- Tool: `search_tech_help("The Commons wireless device gaming console smart TV laptop internet")`. It returned 5 pages, including On-Campus Resident Resources.
-- Answer: TAMU_WiFi for the laptop, or Ethernet through ResNet; TAMU_IoT for the Xbox and TV, with the 4 registration steps; and a router only if its wireless can be turned off.
-- Scores: `cited_page` 1, `correctness` 1, `tool_match` 1. The weakness: there are no inline links, so the sources list includes 2 unrelated news pages.
+**A. Pass: "how do i get my laptop, xbox and tv all online in my room at the commons"**
+- Tool: `search_tech_help`, which returned the On-Campus Resident Resources page among others.
+- Answer: TAMU_WiFi or Ethernet for the laptop; TAMU_IoT, with the registration steps, for the Xbox and TV; and a router only with its wireless off.
 
-**B. Fail, though the answer was right: "is professor kim a good teacher for math 151"** (2.3 s)
-- Tools: `get_course_grades("MATH 151")`, then `get_professor_ratings("Kim")`.
-- Answer: Yes, JD Kim is rated 4.7/5 and over 90% would take him again, plus his 3.18 average GPA in the course.
-- Scores: `correctness` 1, `cited_page` 1, **`tool_match` 0**. The expected tool was only `get_professor_ratings`, and the extra grades call fails the strict rule even though it made the answer better.
+**B. Fail with a right answer: "is professor kim a good teacher for math 151"**
+- Tools: `get_course_grades` and `get_professor_ratings`.
+- Answer: rated 4.7/5, over 90% would take him again, and a 3.18 average GPA.
+- Failed only `tool_match`, because just the ratings tool was expected.
 
-**C. Fail, a real wrong answer: "how many open spots are in west campus garage right now"** (1.0 s)
-- Tool: `search_transportation("west campus garage open spots")`. One result was the collected snapshot of the real-time garage page.
-- Answer: "There are 364 open spots in the West Campus Garage", a number from two days earlier.
-- Scores: `correctness` 0, `not_sure_correct` 0. Fixed by removing the page. The rerun says it's not sure and passes.
+**C. A real wrong answer, now fixed: "how many open spots are in west campus garage right now"**
+- Before: "There are 364 open spots", from a stale snapshot of the real-time page.
+- After removing the page: says it's not sure and links the parking pages. Passes.
 
 ## Cost
 
-About 5K tokens per question. On paid Gemini Flash Lite that's a fraction of a cent, so $10 in credits covers thousands of questions. Groq's free tier is only used for the judges.
+About 5K tokens per question: a fraction of a cent on paid Gemini Flash Lite, so $10 in credits covers thousands of questions. Groq's free tier is only used for the judge.
 
-## Still to do
+## Not measured
 
-- ~~Real-time pages~~ **Done:** the collector skips `Parking/realtime.aspx` now, and its one passage is deleted from Atlas.
-- Next: #76 (vector vs keyword on Flash Lite) and #74 (failure review) build on this run.
+- **pass^3:** 1 run per question.
+- **Judges outside the pass rule:** `relevance`, `groundedness`, `retrieval_relevance`.
+- **The rest of #76:** see above. #74 (failure review) can build on this file's failure list.
