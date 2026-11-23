@@ -21,8 +21,23 @@ def test_matches_are_passages_most_rated_first():
 
 def test_no_match_raises_and_suggests_another_spelling():
     # RMP doesn't fuzzy-match, so the agent needs an error to know to retry (#117)
-    with pytest.raises(LookupError, match="another spelling"):
+    with pytest.raises(LookupError, match="another spelling") as err:
         data.professor_ratings("Eruhimova")
+    assert "start the same way" not in str(err.value)  # 'eruhi', 'eruh', 'eru' find nobody either
+
+
+def test_no_match_suggests_names_that_start_the_same_way(monkeypatch):
+    found = {"eru": {"data": {"newSearch": {"teachers": {"edges": [
+        {"node": {"firstName": "Tatiana", "lastName": "Erukhimova "}}]}}}}}
+    nobody = {"data": {"newSearch": {"teachers": {"edges": []}}}}
+    asked = []
+    monkeypatch.setattr(data, "_fetch_rmp", lambda name: asked.append(name) or found.get(name, nobody))
+    with pytest.raises(LookupError, match="start the same way: Tatiana Erukhimova\\."):
+        data.professor_ratings("Tatiana Eruhimova")
+    assert asked == ["tatiana eruhimova", "eruhi", "eruh", "eru"]  # the longest word, shortened
+    with pytest.raises(LookupError):
+        data.professor_ratings("tatiana eruhimova")
+    assert len(asked) == 4  # cached, suggestions included
 
 
 def test_a_professor_with_no_ratings_is_empty(monkeypatch):
