@@ -170,16 +170,21 @@ def with_retry(fn, *args, tries=8, wait=15, sleep=None, **kwargs):
 
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(\s?%|\s?percent)?", re.IGNORECASE)
 _PROFESSOR = re.compile(r"\b([A-Z]{2,}(?:[-'][A-Z]+)?) [A-Z]{1,2}\b(?![a-z\d])")
+_RANGE = re.compile(r"\s*(?:[-–—]|to)\s*")  # what joins the two ends of "92–93%"
 _URL = re.compile(r"https?://\S+")
 _LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)  # "1. Martinez": a list item, not a claim
 
 
 def numbers_in(text: str) -> list[tuple[str, float]]:
-    """[(kind, value)] for every number: kind is "percent", "gpa" (a decimal up to 4.5) or "count"."""
+    """[(kind, value)] for every number: kind is "percent", "gpa" (a decimal up to 4.5) or "count".
+    In a range like "92–93%" or "92 to 93 percent" both ends are percents."""
     found = []
-    for m in _NUMBER.finditer(text):
+    matches = list(_NUMBER.finditer(text))
+    for m, after in zip(matches, matches[1:] + [None]):
         whole, decimal, percent = m.group(1), m.group(2), m.group(3)
         value = float(whole.replace(",", "") + (decimal or ""))
+        if not percent and after and after.group(3) and _RANGE.fullmatch(text, m.end(), after.start()):
+            percent = after.group(3)
         kind = "percent" if percent else "gpa" if decimal and value <= 4.5 else "count"
         found.append((kind, value))
     return found

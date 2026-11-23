@@ -72,6 +72,22 @@ def test_numbered_list_markers_are_not_claims():
     assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("about 92–93% would take him again", [("percent", 92), ("percent", 93)]),
+    ("92-93 %", [("percent", 92), ("percent", 93)]),
+    ("37 to 38 percent", [("percent", 37), ("percent", 38)]),
+    ("a 3.01–3.08 GPA", [("gpa", 3.01), ("gpa", 3.08)]),
+    ("118 Q-drops, 38% A", [("count", 118), ("percent", 38)]),
+])
+def test_a_percent_range_makes_both_ends_percents(text, expected):
+    assert run_eval.numbers_in(text) == expected
+
+
+def test_a_percent_range_within_a_point_passes():
+    answer = "ALTEMOSE A: about 37–38% of students get an A."
+    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
+
+
 def test_an_answer_with_no_numbers_fails_when_numbers_were_expected():
     assert run_eval.numbers_match("It's a hard class.", "2.68 average GPA", []) == (0, "the answer states no numbers")
 
