@@ -38,6 +38,7 @@ registrar-08
 student-rules-kaushalp55-02
 student-rules-kaushalp55-06
 student-rules-kaushalp55-10
+student-rules-kaushalp55-11
 student-rules-rafperez010-04
 student-rules-rafperez010-08
 student-rules-rushilsagar-02
