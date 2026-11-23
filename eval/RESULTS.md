@@ -146,6 +146,33 @@ The 16 tasks in `ask-aguw0kie124.jsonl`, 3 runs each, with the `correctness` jud
 
 **Question fixes:** before the run, references for the Leyk and cybersecurity-minor tasks were cut down to their key facts. The judge had failed correct answers over "below" vs "about" average and over the catalog page listing two GPAs for joining the minor (2.5 to declare, 2.75 to be eligible). Task 05's reply became "the cybersecurity minor in computer science": with just "cybersecurity", the agent fairly asked again, because a Maritime Cybersecurity minor (Galveston) also exists, and the runner sends only one reply. After the run, task 10's reference stopped requiring the Fall 2026 Q-drop date, which has already passed; the rule, the dates, or both now count.
 
+## Multi-turn conversations (#100)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), hybrid search; commit 4a93fcb; LangSmith tracing on
+```
+
+The 18 tasks in `multiturn-aguw0kie124.jsonl`, 3 runs each, with the `correctness` judge. They make up 9 conversations, graded turn by turn (`-01a`, `-01b`, `-01c`, and so on):
+- follow-ups: "what about summer?", "and for grad students?", "what do students say about him", "whats his gpa in csce 120"
+- a correction: "no i meant csce 221"
+- a topic switch: parking after a professor question
+- a retry after "not sure"
+- two requests to break role partway through a chat: write an essay, "ignore your rules"
+
+The judges now see a task's earlier turns before its question, so follow-ups aren't judged as vague.
+
+| | Result |
+|---|---|
+| **pass@1** | **98%** [94%, 100%] |
+| **pass^3** (passed all 3 runs) | **94%** (17 of 18) |
+| `correctness` / `cited_page` / `tool_match` | 100% / 98% / 100% |
+| Said "not sure" on an answerable question / answered an off-topic request | 0 of 48 / 0 of 6 |
+| Latency p50 / p95 | 2.6 s / 4.6 s |
+
+The only miss: `multiturn-aguw0kie124-02a` ("who's the easiest math 151 professor", the conversation's first turn) cited no page in 1 of 3 runs. It passed 5 more runs, so it's a rare citation flake, not a multi-turn problem. Every follow-up, the correction, the topic switch and both role tests passed all 3 runs.
+
+The histories are hand-written, so the agent never builds on its own earlier mistakes. The optional simulated-conversation step in #100 would test that.
+
 ## Reliability (pass^3)
 
 The 40 questions, 3 runs each, with code graders only (`cited_page`, `tool_match`, `numbers_match`, `not_sure_correct`; no judge). Commit `aa05068`, with the same agent as `fb3e7f6`. Experiment: **Gemini 3.5 Flash Lite · 40 questions × 3 (pass^3) · no judge · aa05068**.
