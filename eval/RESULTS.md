@@ -59,6 +59,11 @@ Every question once on `ae6f39a`. That's the agent after #139 (fixes for #135, #
 - `catalog-aguw0kie124-05` (CS capstone): cited a link not in its sources. Citation.
 - `catalog-aguw0kie124-04`, `oal-klee-SAM-11`, `student-rules-kaushalp55-09`, `transportation-krishjayanth-06`: miss once in a while (passed diagnostic runs or most earlier runs).
 
+**Fixed after the final run:** the Student Rules tool description now lists changing your major, and `ask_user` with options isn't asked until something has been looked up that turn (open questions like "Which minor?" still can be). Rerun with the fix:
+- "bio to engineering": **6 of 6 passed** (was 0 of 3).
+- "how is dr kim": asked with real names from the lookup in 4 of 4 runs, **3 of 4 passed** (was 0 of 3). The miss was in the answer after the student picked.
+- Ask and multi-turn (34): 31 vs 32 before, no over- or under-asking. Student Rules and Registrar (50): 48 vs 48. Both within noise.
+
 From now on, these result files are the baseline: a PR that changes the prompt, model or tools runs the affected questions and checks them with `uv run python eval/compare.py --a eval/results/release-final-part*.jsonl --b <new run>`.
 
 ## Release run (#74)
