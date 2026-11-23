@@ -623,3 +623,30 @@ def test_judges_see_a_multi_turn_tasks_earlier_turns():
     assert seen.index("Student: q drop deadline in spring?") < seen.index("AggieFlow: April 20, 2027.")
     assert seen.endswith("The student now asks: what about summer?")
     assert run_eval.judged_question({"question": "hi"}) == "hi"
+
+
+# --- the #74 release run ------------------------------------------------------------
+
+def test_release_parts_cover_every_question_once():
+    ids = [i for n in range(1, 5) for i in run_eval.read_ids(ROOT / "eval" / f"release-part{n}.txt")]
+    assert len(ids) == len(set(ids))
+    assert set(ids) == {t["id"] for t in run_eval.load_tasks()}
+
+
+def test_rerun_picks_failures_and_new_files_then_summarize_keeps_only_them(tmp_path, capsys):
+    import release_rerun
+
+    base = {"commit": "abc", "model": "m", "mode": "hybrid", "setup": "s", "experiment": "e", "scores": {"cited_page": 1}}
+    first = [{**base, "id": "sr-01", "passed": 1}, {**base, "id": "sr-02", "passed": 0},
+             {**base, "id": "ask-x-01", "passed": 1}, {**base, "id": "multiturn-x-01a", "passed": 1}]
+    results = tmp_path / "release-part1.jsonl"
+    results.write_text("".join(json.dumps(r) + "\n" for r in first), encoding="utf-8")
+    assert release_rerun.main([str(results), "--out-dir", str(tmp_path)]) == 0
+    rerun = run_eval.read_ids(tmp_path / "release-rerun.txt")
+    assert rerun == ["sr-02", "ask-x-01", "multiturn-x-01a"]
+    parts = [i for n in range(1, 5) for i in run_eval.read_ids(tmp_path / f"release-rerun-part{n}.txt")]
+    assert sorted(parts) == sorted(rerun)
+
+    capsys.readouterr()
+    assert summarize.main([str(results), "--ids", str(tmp_path / "release-rerun.txt")]) == 0
+    assert "3 runs from 1 experiment" in capsys.readouterr().out  # sr-01 left out

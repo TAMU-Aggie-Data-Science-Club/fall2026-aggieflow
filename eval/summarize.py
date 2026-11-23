@@ -6,6 +6,9 @@ On Groq's free tier a full run is split across members (#89), each running some 
 files. This merges their --out files and prints the same summary run_eval.py prints: pass@1
 with 95% CIs by source, set and tag, grader averages, latency, fallbacks and refusal errors.
 
+--ids FILE keeps only the listed questions, e.g. the #74 reruns: their first pass plus the
+reruns gives pass^3 for just those questions.
+
 Files from different commits, models or search modes aren't merged: their numbers can't be
 added together. Standard library only, so it runs without the agent's packages.
 """
@@ -42,8 +45,12 @@ def mismatch(recs: list[dict], keys=MUST_MATCH) -> str | None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("files", nargs="+", type=Path, help="run_eval.py --out files")
+    parser.add_argument("--ids", type=Path, metavar="FILE", help="only these question ids, one per line")
     args = parser.parse_args(argv)
     recs = load(args.files)
+    if args.ids:
+        wanted = set(run_eval.read_ids(args.ids))
+        recs = [r for r in recs if r["id"] in wanted]
     if not recs:
         print("No runs in those files", file=sys.stderr)
         return 1
