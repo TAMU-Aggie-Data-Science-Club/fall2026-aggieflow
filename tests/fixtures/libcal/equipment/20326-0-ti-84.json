@@ -1,0 +1,48 @@
+{
+ "status": 1,
+ "results": [
+  {
+   "ID": 223833,
+   "NAME": "Ti-84 plus",
+   "DESCRIPTION": "",
+   "MODEL": "",
+   "LID": 20326,
+   "GID": 42841,
+   "CATEGORY": "Calculators",
+   "LOCATION": "Tech Bar - Annex"
+  },
+  {
+   "ID": 186822,
+   "NAME": "TI-84 Plus CE (G)",
+   "DESCRIPTION": "<p><strong></strong>Only one unit per UIN</p>",
+   "MODEL": "",
+   "LID": 20326,
+   "GID": 42841,
+   "CATEGORY": "Calculators",
+   "LOCATION": "Tech Bar - Annex"
+  },
+  {
+   "ID": 186823,
+   "NAME": "TI-84 Plus CE (G)",
+   "DESCRIPTION": "<p><strong></strong>Only one unit per UIN</p>",
+   "MODEL": "",
+   "LID": 20326,
+   "GID": 42841,
+   "CATEGORY": "Calculators",
+   "LOCATION": "Tech Bar - Annex"
+  },
+  {
+   "ID": 190001,
+   "NAME": "TI-84 Data Transfer Cable: USB-A to Mini-B cable",
+   "DESCRIPTION": "",
+   "MODEL": "",
+   "LID": 20326,
+   "GID": 42931,
+   "CATEGORY": "Chargers, cables and adaptors",
+   "LOCATION": "Tech Bar - Annex"
+  }
+ ],
+ "timezone": "America/Chicago",
+ "total_results": 4,
+ "perpage": 100
+}
