@@ -47,7 +47,8 @@ briefly cover every case, call ask_user instead of guessing: two professors name
 Kim, "the minor" without saying which, a rule that differs for undergrad and grad
 students when the answer would be long. Look things up first when that shows the
 choices. If a short answer can cover every case (each semester's deadline, on- and
-off-campus parking), give it and don't ask.
+off-campus parking), give it and don't ask. Never ask when the question already
+names the course, minor or full name, or when only one option exists: answer for it.
 For choosing or judging a professor, use both grades (anex.us) and ratings
 (RateMyProfessors). Questions only about grades (grade distribution, average GPA,
 percent A's, Q-drops) need grades only. Give both sides when they disagree, and say ratings
@@ -57,7 +58,12 @@ rating and the percent who would take them again (like "students mostly rate him
 below average"), then what the reviews say.
 Name the professor whose grades or ratings you give at least once, by full name,
 not only "he" or "she".
-Keep answers short and plain."""
+Keep answers short and plain, but never leave out a case, condition or exception
+the page gives: both undergraduate and graduate rules, who can get something and for
+how long, which lots or times are exceptions, who to contact for extra time or help (like
+temporary access for up to two years).
+If a rule covers the student's situation (a refund "before the census date" covers
+the first week), answer from it instead of saying you're not sure."""
 
 OUT_OF_ROUNDS = (
     "You can't call any more tools. Answer now using only the tool results above, "
@@ -122,6 +128,7 @@ class ask_user(BaseModel):
 ASK = "ask_user"
 MAX_OPTIONS = 6
 NOT_ASKED = "Not asked: ask_user can't run with other tools. Use their results first."
+ONE_OPTION = "Not asked: there is only one option ({}). Answer for it without asking."
 
 
 def question_of(call: dict) -> dict:
@@ -130,6 +137,11 @@ def question_of(call: dict) -> dict:
     options = [str(o).strip() for o in args.get("options") or [] if str(o).strip()]
     return {"prompt": str(args.get("prompt") or "Which one do you mean?").strip(),
             "options": list(dict.fromkeys(options))[:MAX_OPTIONS]}
+
+
+def single_option(call: dict) -> bool:
+    """An ask_user call with exactly one option: nothing to choose, so it isn't asked."""
+    return call["name"] == ASK and len(question_of(call)["options"]) == 1
 
 
 def question_text(question: dict) -> str:
@@ -159,7 +171,7 @@ def make_agent_node(model):
         rounds = state.get("rounds", 0)
         if rounds < MAX_ROUNDS:
             reply = with_tools.invoke(messages)
-            looked_up = any(c["name"] != ASK for c in reply.tool_calls)  # asking isn't a round
+            looked_up = any(c["name"] != ASK or single_option(c) for c in reply.tool_calls)  # asking isn't a round
             return {"messages": [reply], "rounds": rounds + looked_up}
 
         # Out of rounds: answer with what we have. Some models still try to
@@ -182,15 +194,16 @@ def route(state: State) -> str:
     calls = getattr(state["messages"][-1], "tool_calls", None)
     if not calls:
         return "check"
-    return "ask" if all(c["name"] == ASK for c in calls) else "tools"
+    return "ask" if all(c["name"] == ASK and not single_option(c) for c in calls) else "tools"
 
 
 def make_tools_node():
     tools = {t.name: t for t in ALL_TOOLS}
 
     def run_one(call: dict) -> tuple[ToolMessage, list]:
-        if call["name"] == ASK:  # with other tools: they run, the question doesn't
-            return ToolMessage(NOT_ASKED, tool_call_id=call["id"], name=ASK), []
+        if call["name"] == ASK:  # with other tools, or one option: the question isn't asked
+            note = ONE_OPTION.format(question_of(call)["options"][0]) if single_option(call) else NOT_ASKED
+            return ToolMessage(note, tool_call_id=call["id"], name=ASK), []
         tool = tools.get(call["name"])
         try:
             if tool is None:

@@ -14,10 +14,13 @@ from agent.state import Passage
 @tool
 def search_student_rules(query: str) -> list[Passage]:
     """Search the Texas A&M Student Rules: Q-drops, excused absences and
-    make-up work, grading and grade notations, final exams, academic standing,
-    student conduct and campus behavior rules (animals in buildings, skateboards).
-    Not for dates or deadlines, including the Q-drop deadline, or for graduation
-    ceremonies (use search_registrar)."""
+    make-up work, grading and grade notations, final exams, academic standing
+    (GPA for undergraduate and graduate students), refunds of tuition, fees and
+    meal plans after a drop or withdrawal, transfer and accredited-college credit,
+    the official TAMU email rule (checking it, forwarding it), student conduct and
+    campus behavior rules (animals in buildings, skateboards). Not for dates or
+    deadlines, including the Q-drop deadline, or for graduation ceremonies
+    (use search_registrar)."""
     return data.search("student-rules", query)
 
 
@@ -27,7 +30,7 @@ def search_registrar(query: str) -> list[Passage]:
     deadlines (add/drop, Q-drop, withdrawal, finals), transcripts, enrollment
     verification, graduation, commencement ceremonies (tickets, guests, Reed
     Arena) and diplomas, residency and records. Not for the rules themselves, like how many Q-drops
-    you get (use search_student_rules)."""
+    you get, or refunds and transfer credit (use search_student_rules)."""
     return data.search("registrar", query)
 
 
@@ -35,7 +38,8 @@ def search_registrar(query: str) -> list[Passage]:
 def search_tech_help(query: str) -> list[Passage]:
     """Search Technology Services (IT) help: Wi-Fi and VPN, NetID and accounts,
     email, software for students, printing (AggiePrint) and open access labs,
-    IT security and policy."""
+    IT security and policy, and what happens to accounts after graduation. Not for the
+    rule on forwarding or checking official TAMU email (use search_student_rules)."""
     return data.search("oal", query)
 
 
@@ -52,7 +56,7 @@ def search_degree_plans(query: str) -> list[Passage]:
 @tool
 def search_transportation(query: str) -> list[Passage]:
     """Search Transportation Services: parking permits, lots and garages,
-    night, break and visitor parking, citations and appeals, accessible
+    night and weekend parking (after 5 p.m., lot exceptions), break and visitor parking, citations and appeals, accessible
     parking, AggieSpirit bus service and how to ride, gameday parking and
     shuttles, bikes, scooters and EV charging. Not for live bus arrival times
     or open garage spaces right now (we don't have them), or for the Student
