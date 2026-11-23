@@ -164,6 +164,24 @@ def test_grade_and_ratings_tasks_need_numbers_match_and_correctness():
     assert scores(run_eval.grade(meta, ref, out, YES_JUDGES))["passed"] == 1
 
 
+def test_only_grade_and_ratings_tasks_ask_the_judge_for_the_verdict_alone():
+    seen = {}
+
+    def spy(inputs, outputs, reference_outputs):
+        seen[outputs["answer"]] = inputs.get("verdict_only")
+        return {"key": "correctness", "score": 1, "comment": ""}
+    spy.__name__ = "correctness"
+
+    both = {"id": "r-13", "source": "ratemyprofessors", "tags": [],
+            "tools": ["get_professor_ratings", "get_professor_grades"]}
+    ratings_only = {**both, "tools": ["get_professor_ratings"]}
+    out = {"sources": [passage(CHEM)], "documents": [], "calls": [call("get_professor_ratings")]}
+    run_eval.grade(both, {"answer": REFERENCE, "source_url": CHEM}, {**out, "answer": "both"}, [spy])
+    run_eval.grade(ratings_only, {"answer": "Students love her.", "source_url": CHEM}, {**out, "answer": "ratings"}, [spy])
+    run_eval.grade(RULES_META, RULES_REF, {**RULES_OUT, "answer": "rules"}, [spy])
+    assert seen == {"both": True, "ratings": False, "rules": False}
+
+
 def test_not_sure_with_related_links_still_counts_as_declining():
     meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
     ref = {"answer": "NOT_SURE", "source_url": None}

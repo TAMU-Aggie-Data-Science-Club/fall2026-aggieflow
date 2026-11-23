@@ -283,7 +283,9 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
         "numbers_match": numbers_match(answer, reference["answer"], outputs.get("documents", [])) if grade_task else
         (None, "not a grade task"),
     }
-    inputs = {"question": meta.get("question", "")}
+    # On a grade task that also expects ratings, numbers_match checks the grades, so the judge
+    # grades only the ratings verdict (judges.correctness reads verdict_only).
+    inputs = {"question": meta.get("question", ""), "verdict_only": grade_task and needs_judge(meta)}
     for judge in judges or []:
         name = judge.__name__
         if name == "correctness" and not judged:
