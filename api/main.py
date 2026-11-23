@@ -1,9 +1,11 @@
 import logging
 import os
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI()
@@ -118,5 +120,11 @@ def chat(request: request):
     except Exception:
         logger.exception("Chat request failed")
         raise HTTPException(status_code=503, detail="AggieFlow can't answer right now. Try again in a minute.")
-  
 
+
+# The built UI (cd web && npm run build), served at / when it exists, as in the Docker
+# image. WEB_DIST picks another folder. Keep this at the end of the file: a mount at /
+# catches every path, so routes added after it would never be reached.
+WEB_DIST = Path(os.getenv("WEB_DIST", Path(__file__).resolve().parent.parent / "web" / "dist"))
+if (WEB_DIST / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")

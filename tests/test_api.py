@@ -1,5 +1,6 @@
 """Tests for api/main.py. The agent is replaced with a fake, so no model calls."""
 
+import importlib
 import uuid
 
 import pytest
@@ -144,3 +145,32 @@ def test_chat_returns_the_question_when_the_agent_asks(client, monkeypatch):
                                                               "sources": [], "calls": [], "question": asked})
     body = client.post("/chat", json={"question": "is professor leyk good"}).json()
     assert body["question"] == asked and body["sources"] == []
+
+
+@pytest.fixture
+def reload_api(monkeypatch):
+    """Reload api.main with WEB_DIST set to a folder; put it back afterwards."""
+    def load(folder):
+        monkeypatch.setenv("WEB_DIST", str(folder))
+        return TestClient(importlib.reload(api.main).app)
+    yield load
+    monkeypatch.undo()
+    importlib.reload(api.main)
+
+
+def test_serves_the_built_ui_at_the_root(tmp_path, reload_api):
+    (tmp_path / "index.html").write_text("<title>AggieFlow</title>", encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    client = reload_api(tmp_path)
+    assert "AggieFlow" in client.get("/").text
+    assert client.get("/assets/app.js").text == "console.log(1)"
+    # the API's routes still come first
+    assert client.get("/health").json() == {"ok": True}
+    assert client.post("/chat", json={}).status_code == 422
+
+
+def test_no_built_ui_leaves_the_root_empty(tmp_path, reload_api):
+    client = reload_api(tmp_path)  # no index.html here
+    assert client.get("/").status_code == 404
+    assert client.get("/health").json() == {"ok": True}

@@ -52,6 +52,19 @@ cd web && npm install && npm run dev
 
 Then open http://localhost:5173. The UI calls the API at `http://localhost:8000`. To use another address, copy `web/.env.example` to `web/.env` and set `VITE_API_URL`.
 
+## Run with Docker
+
+The `Dockerfile` builds one image with the UI and the API together, for deploying (#144). The API serves the built UI at `/`, so there's one address and no `ALLOWED_ORIGINS` to set.
+
+```bash
+docker build -t aggieflow .
+docker run --env-file .env -p 8000:8000 aggieflow
+```
+
+Then open http://localhost:8000. Keys come from the environment (`--env-file` here, the host's settings when deployed) and are never copied into the image; `.dockerignore` keeps `.env` and `data/` out. Set `MONGODB_URI`, since the image has no local data files. The server listens on `PORT` when the host sets it.
+
+Without Docker, `cd web && npm run build` and then the API command above serves the same thing from `web/dist/`.
+
 ## Tech stack
 
 | Layer | Technology |
