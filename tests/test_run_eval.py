@@ -288,6 +288,22 @@ def test_retry_waits_out_a_per_minute_limit(capsys):
     assert waits == [15]
 
 
+class GoogleRateLimitError(Exception):
+    pass
+
+
+def test_retry_waits_out_geminis_per_minute_limit(capsys):
+    attempts, waits = [], []
+
+    def flaky():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise GoogleRateLimitError("429 RESOURCE_EXHAUSTED: requests per minute limit exceeded on Free Tier")
+        return "ok"
+    assert run_eval.with_retry(flaky, sleep=waits.append) == "ok"
+    assert waits == [15]
+
+
 def test_retry_gives_up_at_once_on_the_daily_limit(capsys):
     waits = []
 
