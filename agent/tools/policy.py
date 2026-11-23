@@ -15,7 +15,8 @@ from agent.state import Passage
 def search_student_rules(query: str) -> list[Passage]:
     """Search the Texas A&M Student Rules: Q-drops, excused absences and
     make-up work, grading and grade notations, final exams, academic standing
-    (GPA for undergraduate and graduate students), refunds of tuition, fees and
+    (GPA for undergraduate and graduate students), changing your major
+    (curriculum change), refunds of tuition, fees and
     meal plans after a drop or withdrawal, transfer and accredited-college credit,
     the official TAMU email rule (checking it, forwarding it), student conduct and
     campus behavior rules (animals in buildings, skateboards). Not for dates or
