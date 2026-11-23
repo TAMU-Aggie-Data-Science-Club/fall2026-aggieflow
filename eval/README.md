@@ -38,6 +38,7 @@ Files with any other prefix, like `extra-<name>.jsonl`, set `tools` on every lin
 
 **Tags:**
 - `no-tool`: the agent shouldn't call a tool.
+- `greeting`: a greeting or thanks on a `NOT_SURE` task. The agent's intro counts as the right reply, and the judge isn't asked.
 - `multi-tool`: needs two tools.
 - `paraphrase`: shares no distinctive words with its page.
 - `shorthand`: uses student shorthand ("qdrop", "hrs", "ESA").

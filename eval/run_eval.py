@@ -10,7 +10,8 @@
 3. Grades every run (one evaluator, so each LLM judge runs once per run):
    - code graders, 1 or 0:
      cited_page        an answerable task cites its source_url (or an also_accept page)
-     not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine)
+     not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine); on a task
+                       tagged greeting ("hey!", "thanks"), the agent's intro counts too
      tool_match        it called tools only from the task's "tools" (and none if that's []).
                        Recorded, never fails a task: an extra tool call can still give a right answer.
                        ask_user isn't a tool here; asked_right grades it.
@@ -67,6 +68,7 @@ MODES = ("keyword", "vector", "hybrid")
 GRADE_TOOLS = {"get_course_grades", "get_professor_grades"}
 NOT_SURE = score.NOT_SURE
 ASK = "ask_user"
+GREETING = "greeting"  # tag: a greeting or thanks, where the agent's intro is the right reply
 RESULTS = ROOT / "eval" / "results"
 BOOTSTRAP = 2000  # resamples for the 95% CIs
 
@@ -292,6 +294,13 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     answer, expects_not_sure = outputs["answer"], reference["answer"] == NOT_SURE
     cited = {score.normalize_url(p["source_url"]) for p in outputs.get("sources", []) if p.get("source_url")}
     said_not_sure = "not sure" in answer.lower()
+    # A greeting or thanks ("hey!", tag greeting) has nothing to look up: the agent's fixed intro is
+    # the right reply, so it counts as declining, and the judge isn't asked.
+    greeting = expects_not_sure and GREETING in (meta.get("tags") or [])
+    if greeting:
+        from agent.checks import INTRO
+
+        said_not_sure = said_not_sure or answer.strip() == INTRO
     calls = [c for c in outputs.get("calls", []) if c["name"] != ASK]  # asking isn't a lookup
     called = [c["name"] for c in calls]
     expected = meta.get("tools")
@@ -318,6 +327,9 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
         name = judge.__name__
         if name == "correctness" and not judged:
             results[name] = (None, "grade task: numbers_match grades the answer")
+            continue
+        if name == "correctness" and greeting:
+            results[name] = (None, "greeting: not_sure_correct checks for the intro")
             continue
         r = with_retry(judge, inputs, outputs, reference)
         results[name] = (r["score"], r.get("comment", ""))

@@ -260,8 +260,8 @@ class MainTest(unittest.TestCase):
         self.assertEqual(err, "")  # every committed question file loads cleanly
         lines = out.splitlines()
         self.assertTrue(lines[-1].startswith("TOTAL: "))
-        self.assertIn("student-rules-rushilsagar.jsonl: cited the expected page 0/9, "
-                      "said not sure correctly 1/1, wrongly not sure 9, errors 0", lines)
+        self.assertIn("student-rules-rushilsagar.jsonl: cited the expected page 0/10, "
+                      "said not sure correctly 0/0, wrongly not sure 10, errors 0", lines)
 
 
 class CommandLineTest(unittest.TestCase):

@@ -650,3 +650,16 @@ def test_rerun_picks_failures_and_new_files_then_summarize_keeps_only_them(tmp_p
     capsys.readouterr()
     assert summarize.main([str(results), "--ids", str(tmp_path / "release-rerun.txt")]) == 0
     assert "3 runs from 1 experiment" in capsys.readouterr().out  # sr-01 left out
+
+
+def test_a_greeting_passes_with_the_intro_and_skips_the_judge():
+    from agent.checks import INTRO
+
+    reference = {"answer": "NOT_SURE", "source_url": None}
+    intro = {"answer": INTRO, "sources": [], "documents": [], "calls": []}
+    greeting = run_eval.grade({"tools": [], "tags": ["no-tool", "greeting"]}, reference, intro, [judge("correctness", 0)])
+    assert greeting["passed"][0] == 1 and greeting["correctness"][0] is None
+    assert greeting["answered_out_of_scope"][0] == 0
+    # without the tag, the intro still isn't a decline
+    other = run_eval.grade({"tools": [], "tags": ["no-tool"]}, reference, intro, [judge("correctness", 0)])
+    assert other["passed"][0] == 0

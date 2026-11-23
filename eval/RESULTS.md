@@ -1,5 +1,7 @@
 # Agent results (#89)
 
+**Current numbers are in the [Release run](#release-run-74): every question, on one commit.** The 40-question sample below came first and ran on an older commit.
+
 ```
 setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit c16110e; LangSmith tracing on
 ```
@@ -19,6 +21,86 @@ Runs are named `agent-<mode>-<commit>-<id>` and renamed in LangSmith afterward t
 ```
 uv run python eval/run_eval.py --ids eval/sample-40.txt --judges correctness --repetitions 1
 ```
+
+## Release run (#74)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), hybrid search; commit 8d659b9; LangSmith tracing off
+```
+
+Every question in `eval/questions/` (179 tasks: 145 single-turn, 16 ask, 18 multi-turn) ran once on commit `8d659b9`, in 4 parts on 3 Groq keys, with the `correctness` judge. Then the 31 that failed, plus every ask and multi-turn task (61 in all), ran 2 more times. Result files: `eval/results/release-part*.jsonl` (first pass) and `eval/results/release-rerun-part*.jsonl` (reruns).
+
+| | Result |
+|---|---|
+| **pass@1**, every question | **83%** (148 of 179), 95% CI [77%, 88%] |
+| pass@1 without the 12 broken questions (below) | **89%** (148 of 167) |
+| Passed every run it had | 145 of 179 (81%); 145 of 167 without broken questions (87%) |
+| **pass^3**, the 61 rerun questions | **44%** (27 of 61). This set is mostly first-pass failures, so it's low by design. |
+| pass^3, ask / multi-turn | 62% (10 of 16) / 94% (17 of 18) |
+| Over-asking / under-asking (#129), all 3 runs | 2 of 30 / 0 of 18 |
+| Said "not sure" on an answerable question (first pass) | 2 of 160 |
+| Answered a `NOT_SURE` question (first pass) | 4 of 19 (3 are broken questions) |
+| Latency p50 / p95 (first pass) | 2.8 s / 5.8 s |
+
+**pass@1 by file (first pass):** multi-turn 100%, RateMyProfessors 100%, Registrar 100%, anex 83%, Student Rules 80%, Transportation 80%, extra 76%, ask 75%, OAL 67%, catalog 60%. The small files (10 to 18 questions) have wide CIs.
+
+### Failures
+
+34 questions failed at least one run. Each is listed by the **first** step that went wrong. The reasons come from one extra diagnostic run per question, because result files don't save answer text.
+
+| Step | Questions |
+|---|---|
+| broken question | 12 |
+| answer | 10 |
+| tool choice | 4 |
+| citation | 3 |
+| conversation | 3 |
+| retrieval | 2 |
+
+**Broken question (12).** The answer was right, but the reference or the pages it accepts were out of date. All 12 are fixed (see Question fixes).
+- `extra-krishjayanth-01` ("hey!") and `-02` ("thanks, that helped a lot"), 0 of 3: they expected "not sure", but since #113 greetings and thanks get the intro.
+- `student-rules-rushilsagar-10` ("how much is a parking permit"), 0 of 3: expected "not sure", but Transportation is collected now, so the agent answers correctly.
+- `catalog-aguw0kie124-09` (Thanksgiving break), `student-rules-rushilsagar-07` (summa cum laude), `-08` and `extra-krishjayanth-21` (hours to be a junior or sophomore), `student-rules-rafperez010-01` (registration hold), `oal-klee-SAM-03` (Help Desk contact), all 0 of 3: right answers cited from the Registrar's calendar, the catalog or another IT page, which the questions didn't accept.
+- `student-rules-rushilsagar-02` (fall Q-drop deadline), 0 of 3: gave the Fall 2026 date, which the reference didn't include.
+- `extra-krishjayanth-36` (country music class), 0 of 3: MUSC 224 is on both the Creative Arts and the Cultural Discourse lists; the reference only accepted Cultural Discourse.
+- `oal-klee-SAM-01` (WiFi off campus), 0 of 3: the reference allowed only the VPN; eduroam is also right.
+
+**Answer (10).** Right page, answer wrong or incomplete:
+- `ask-aguw0kie124-16` ("what gpa do i need to stay in good standing"), 0 of 3: gives the undergraduate 2.00 rule, leaves out graduate students' 3.00.
+- `extra-krishjayanth-32` (Google Drive after graduation), 0 of 3: leaves out that Help Desk Central can give temporary access for up to two years.
+- `catalog-aguw0kie124-10` ("what's the easiest science elective"), 1 of 3: answered a question our sources can't.
+- `multiturn-aguw0kie124-08a` ("how is lupoli"), 1 of 3: `numbers_match` couldn't find a number it stated.
+- 1 or 2 misses out of 3, judge marked the answer incomplete: `ask-aguw0kie124-05`, `-11`, `-02`, `extra-krishjayanth-31`, `transportation-krishjayanth-06`, `anex-rushilsagar-12`.
+
+**Tool choice (4).** Searched the Registrar or IT help instead of the Student Rules, and missed the answer:
+- `extra-krishjayanth-12` (meal plan refund after withdrawing), 0 of 3: five Registrar searches, then "not sure".
+- `extra-krishjayanth-19` (tuition for a class dropped in week one), 0 of 3: wrong. It says flat-rate tuition may not change; Rule 19 says it's refunded in full before the census date.
+- `extra-krishjayanth-24` (community college credit), 0 of 3: explains transcript processing but not the rule that accredited credit counts.
+- `student-rules-kaushalp55-09` (forward TAMU email to Gmail), 0 of 3: misses Rule 61's caveats.
+
+**Citation (3):**
+- `oal-klee-SAM-05` (AI platforms) and `-11` (Photoshop), 0 of 3: right answers citing other IT pages instead of the expected one. This may be a broken question too.
+- `catalog-aguw0kie124-05` (CS capstone), 2 of 3: once cited a link that wasn't in its sources (`[link removed]`).
+
+**Conversation (3):**
+- `anex-rushilsagar-10` ("is professor kim a good teacher for math 151"), 0 of 3: asks "Which Professor Kim?" with a single option, Jin Kim, even though only one Kim teaches MATH 151.
+- `ask-aguw0kie124-12` and `-14`, 2 of 3 each: asked which one, once each, when the question already said.
+
+**Retrieval (2):**
+- `catalog-aguw0kie124-04` ("what do cs majors take freshman fall"), 2 of 3: once didn't find the degree plan's first-year table after 4 searches and said "not sure".
+- `transportation-krishjayanth-02` (parking after 5 p.m.), 0 of 3: two searches didn't bring up the night-parking page, so it missed the lot exceptions and the West Campus Garage's 4 p.m. start.
+
+Issues for the agent mistakes: #135 (tool choice), #136 (asking with one option or when it isn't needed), #137 (answers that leave out a case or caveat, plus the parking retrieval miss).
+
+### Question fixes
+
+After the run, all 12 broken questions were fixed:
+- the 2 greetings are tagged `greeting`, so the agent's intro passes and the judge isn't asked
+- the 6 that cited another right page now accept it
+- the parking-permit question now expects the 2026-27 rates
+- the fall Q-drop, MUSC 224 and WiFi references now accept the other right answers
+
+Each fixed question passed a check run afterward. The scores above are from before the fixes.
 
 ## How we got here
 
