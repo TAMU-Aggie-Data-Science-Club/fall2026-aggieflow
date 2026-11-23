@@ -175,7 +175,7 @@ def load_questions(path: Path) -> list[dict]:
             if not isinstance(q, dict) or any(k not in q for k in FIELDS):
                 print(f"{path.name}:{n}: skipped, needs {', '.join(FIELDS)}", file=sys.stderr)
                 continue
-            if q["answer"] != NOT_SURE and not isinstance(q["source_url"], str):
+            if q["answer"] != NOT_SURE and not isinstance(q["source_url"], str) and not asks_back(q):
                 print(f"{path.name}:{n}: skipped, answerable but source_url is not a URL", file=sys.stderr)
                 continue
             problem = _bad_optional_field(q)
@@ -188,10 +188,18 @@ def load_questions(path: Path) -> list[dict]:
     return questions
 
 
+def asks_back(q: dict) -> bool:
+    """A `clarify` task (#100): the right reply is one short question back, like "Which
+    Professor Leyk?", so it has no source_url. run_eval.py grades it, with its history."""
+    return "clarify" in (q.get("tags") or [])
+
+
 def score(questions: list[dict], answer_fn) -> dict:
     """Run each question through answer_fn and count the results."""
     counts = dict.fromkeys(COUNTS, 0)
     for q in questions:
+        if asks_back(q):  # graded by run_eval.py, which passes the earlier turns
+            continue
         expects_not_sure = q["answer"] == NOT_SURE
         counts["not_sure_questions" if expects_not_sure else "answerable"] += 1
         try:

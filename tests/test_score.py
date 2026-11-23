@@ -186,6 +186,18 @@ class LoadQuestionsTest(unittest.TestCase):
         self.assertIn("x.jsonl:4: skipped", err.getvalue())
         self.assertIn("x.jsonl:5: skipped, answerable but source_url", err.getvalue())
 
+    def test_clarify_tasks_load_without_a_page_and_are_left_to_run_eval(self):
+        ask = {"id": "t-11", "question": "is professor leyk good", "answer": "Asks which Leyk.",
+               "source_url": None, "tools": ["get_professor_ratings"], "tags": ["multi-turn", "clarify"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                loaded = score.load_questions(write_jsonl(tmp, "x.jsonl", [ask]))
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual([q["id"] for q in loaded], ["t-11"])
+        counts = score.score(loaded, score.dummy_answer)  # needs the history, so run_eval.py grades it
+        self.assertEqual(counts["answerable"] + counts["not_sure_questions"], 0)
+
     def test_missing_tools_come_from_the_file_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             rules = score.load_questions(write_jsonl(tmp, "student-rules-x.jsonl", QUESTIONS[:1]))

@@ -164,6 +164,21 @@ def test_grade_and_ratings_tasks_need_numbers_match_and_correctness():
     assert scores(run_eval.grade(meta, ref, out, YES_JUDGES))["passed"] == 1
 
 
+def test_clarify_task_passes_when_the_agent_asks_back_and_cites_nothing():
+    meta = {"id": "m-03a", "source": "multiturn", "tools": ["get_professor_ratings"], "tags": ["multi-turn", "clarify"]}
+    ref = {"answer": "Asks which Leyk: Teresa or Zbigniew.", "source_url": None}
+    asked = {"answer": "There are two Professor Leyks, Teresa and Zbigniew. Which one do you mean?",
+             "sources": [], "documents": [], "calls": [call("get_professor_ratings")]}
+    s = scores(run_eval.grade(meta, ref, asked, YES_JUDGES))
+    assert s["asked_back"] == 1 and s["passed"] == 1
+    assert s["cited_page"] is None
+    guessed = {"answer": f"Teresa Leyk is rated 3.1/5 ({CHEM})", "sources": [passage(CHEM)],
+               "documents": [], "calls": [call("get_professor_ratings")]}
+    assert scores(run_eval.grade(meta, ref, guessed, YES_JUDGES))["passed"] == 0
+    gave_up = {"answer": "I'm not sure. Which one?", "sources": [], "documents": [], "calls": []}
+    assert scores(run_eval.grade(meta, ref, gave_up, YES_JUDGES))["asked_back"] == 0
+
+
 def test_not_sure_with_related_links_still_counts_as_declining():
     meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
     ref = {"answer": "NOT_SURE", "source_url": None}

@@ -39,6 +39,9 @@ Files with any other prefix, like `extra-<name>.jsonl`, set `tools` on every lin
 - `recovery`: the first tool call should fail and the agent should retry.
 - `real`: asked by a real student.
 - `known-gap`: the page isn't collected yet. `eval/score.py` skips these tasks.
+- `multi-turn`: has a `history` (#100).
+- `role`: an off-topic or "ignore your rules" request partway through a chat; `answer` is `NOT_SURE`.
+- `clarify`: the right reply is one short question back ("Which Professor Leyk?"), so `source_url` is `null` and `answer` says what to ask. `eval/run_eval.py` passes it when the reply ends with "?", cites nothing and isn't a "not sure" (the `asked_back` score); `eval/score.py` skips it, since it doesn't pass the history.
 
 ## Writing questions
 

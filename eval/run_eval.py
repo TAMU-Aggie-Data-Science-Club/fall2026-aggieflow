@@ -264,6 +264,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     if not outputs or "answer" not in outputs:
         return {"passed": (0, "the agent run failed")}
     answer, expects_not_sure = outputs["answer"], reference["answer"] == NOT_SURE
+    asks_back = "clarify" in (meta.get("tags") or [])  # the right reply is a question back (#100)
     cited = {score.normalize_url(p["source_url"]) for p in outputs.get("sources", []) if p.get("source_url")}
     said_not_sure = "not sure" in answer.lower()
     called = [c["name"] for c in outputs.get("calls", [])]
@@ -273,7 +274,12 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
 
     results = {
         "cited_page": (None, "NOT_SURE task") if expects_not_sure else
+        (None, "clarify task") if asks_back else
         (int(bool(score.accepted_urls(reference) & cited)), f"cited {sorted(cited)}"),
+        # A clarifying question ends with "?", cites nothing and isn't a "not sure"
+        # (agent/checks.py lets exactly that through unchanged).
+        "asked_back": (int(answer.rstrip().endswith("?") and not cited and not said_not_sure),
+                       f"cited {sorted(cited)}") if asks_back else (None, "not a clarify task"),
         # Declining counts even with links attached ("not sure, but see these pages").
         "not_sure_correct": (int(said_not_sure), "") if expects_not_sure else
         (None, "answerable task"),
@@ -299,7 +305,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     results["answered_out_of_scope"] = ((int(not said_not_sure), "") if expects_not_sure else
                                         (None, "answerable task"))
 
-    gates = ["not_sure_correct" if expects_not_sure else "cited_page"]
+    gates = ["not_sure_correct" if expects_not_sure else "asked_back" if asks_back else "cited_page"]
     gates += ["numbers_match"] * grade_task + ["correctness"] * judged  # tool_match grades the path, so it's only recorded
     scores = {g: results[g][0] for g in gates if g in results and results[g][0] is not None}
     failed = [g for g, s in scores.items() if s != 1]
