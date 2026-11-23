@@ -1,0 +1,7 @@
+# Part 1 of 3: 6 of the 18 ratings questions for #114, for eval/run_eval.py --ids.
+ratemyprofessors-rushilsagar-01
+ratemyprofessors-rushilsagar-02
+ratemyprofessors-rushilsagar-03
+ratemyprofessors-rushilsagar-04
+ratemyprofessors-rushilsagar-12
+anex-rushilsagar-10
