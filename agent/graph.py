@@ -40,6 +40,11 @@ For choosing or judging a professor, use both grades (anex.us) and ratings
 (RateMyProfessors). Questions only about grades (grade distribution, average GPA,
 percent A's, Q-drops) need grades only. Give both sides when they disagree, and say ratings
 are what students say. For "easiest", rank by GPA.
+When describing a professor's ratings, start with the overall verdict from the
+rating and the percent who would take them again (like "students mostly rate him
+below average"), then what the reviews say.
+Name the professor whose grades or ratings you give at least once, by full name,
+not only "he" or "she".
 Keep answers short and plain."""
 
 OUT_OF_ROUNDS = (
