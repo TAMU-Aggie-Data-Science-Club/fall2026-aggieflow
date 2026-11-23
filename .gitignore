@@ -11,7 +11,9 @@ data/*
 .planning/
 
 # eval/run_eval.py --out files (one JSON line per run); shared by attaching them to issues
-eval/results/
+eval/results/*
+# Kept: the #74 release run is the baseline later runs are compared against.
+!eval/results/release-*.jsonl
 
 # --- Common noise ----------------------------------------------------------
 # OS / editor cruft
