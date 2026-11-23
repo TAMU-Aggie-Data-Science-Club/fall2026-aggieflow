@@ -3,6 +3,9 @@
     question (+ history) -> normalize -> agent <-> tools
                                \\-> check -> END
 
+Compiled with a checkpointer, a thread keeps its conversation between calls:
+normalize trims it to earlier questions and final answers before each turn.
+
 The agent loops until it answers or hits MAX_ROUNDS. Every tool call the model
 makes in one turn runs at the same time, whatever group the tool belongs to.
 """
@@ -10,7 +13,7 @@ makes in one turn runs at the same time, whatever group the tool belongs to.
 import json
 import os
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.config import get_executor_for_config
 from langgraph.graph import END, START, StateGraph
@@ -66,13 +69,32 @@ def history_messages(history: list[dict]) -> list:
     return messages
 
 
+def finished_turns(messages: list) -> list:
+    """Each earlier question with its final answer, oldest first. Tool calls, tool
+    results and a turn that never got an answer (it failed partway) are left out."""
+    kept, question = [], None
+    for m in messages:
+        if isinstance(m, HumanMessage):
+            question = m
+        elif isinstance(m, AIMessage) and not m.tool_calls and question is not None:
+            kept += [question, m]
+            question = None
+    return kept
+
+
 def normalize(state: State) -> dict:
-    """Start a run: earlier turns, then the question, with no rounds or sources
-    yet, so an answer cites only what was found for it. The student's words are
-    passed on unchanged; if evals show shorthand (qdrop, wcl) hurting search,
-    expand it inside agent/data.py."""
-    messages = [*history_messages(state.get("history") or []), HumanMessage(state["question"])]
-    return {"messages": messages, "rounds": 0, "sources": []}
+    """Start a turn: earlier turns, then the question, with no rounds or sources
+    yet, so an answer cites only what was found for it. A thread's earlier turns
+    come from the checkpointer, trimmed to questions and answers (the last
+    MAX_HISTORY messages); a new conversation can start from `history` instead.
+    The student's words are passed on unchanged; if evals show shorthand
+    (qdrop, wcl) hurting search, expand it inside agent/data.py."""
+    old = state.get("messages") or []
+    keep = {m.id for m in finished_turns(old)[-MAX_HISTORY:]}
+    earlier = [RemoveMessage(id=m.id) for m in old if m.id not in keep]
+    if not old:
+        earlier = history_messages(state.get("history") or [])
+    return {"messages": [*earlier, HumanMessage(state["question"])], "rounds": 0, "sources": None}
 
 
 # 0 so the same question gets the same answer, and eval runs can be compared.
@@ -146,11 +168,16 @@ def make_tools_node():
 
 
 def check(state: State) -> dict:
-    text, _ = finalize(state["messages"][-1].text, state.get("sources", []), tools_called(state["messages"]))
-    return {"answer": text}
+    """The final answer and the passages it cites. The model's reply is replaced by the
+    answer as the student sees it (without the Sources list), so a thread's later turns
+    read what was shown, not links that were removed."""
+    reply = state["messages"][-1]
+    text, cited = finalize(reply.text, state.get("sources", []), tools_called(state["messages"]))
+    shown = AIMessage(text.split("\n\nSources:\n")[0], id=reply.id)
+    return {"answer": text, "cited": cited, "messages": [shown]}
 
 
-def build_graph(model=None):
+def build_graph(model=None, checkpointer=None):
     model = model or default_model()
     graph = StateGraph(State)
     graph.add_node("normalize", normalize)
@@ -163,4 +190,4 @@ def build_graph(model=None):
     graph.add_edge("normalize", "agent")
     graph.add_conditional_edges("agent", route, ["tools", "check"])
     graph.add_edge("check", END)
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

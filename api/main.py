@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +57,8 @@ class message(BaseModel):
 class request(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     history: list[message] = Field(default = [], max_length=20)
+    #the conversation to continue; leave it out to start one (the reply has its id)
+    thread_id: uuid.UUID | None = None
 
 @app.get("/health")
 def health():
@@ -67,11 +70,14 @@ def chat(request: request):
         {"role": message.role, "content": message.content} for message in request.history
     ]
 
+    thread_id = str(request.thread_id or uuid.uuid4())
+
     try:
         result = answer(
             request.question,
             history = history,
-            metadata = {"via": "api"}
+            metadata = {"via": "api"},
+            thread_id = thread_id,
         )
 
         answer_text = result["answer"].split("\nSources:")[0].strip()
@@ -97,6 +103,7 @@ def chat(request: request):
             "sources": sources,
             "tools": tools,
             "grades": grade_charts(result["calls"]),
+            "thread_id": thread_id,
         }
     except Exception:
         logger.exception("Chat request failed")

@@ -48,13 +48,15 @@ function historyBefore(turns, index) {
 export default function App() {
   const [turns, setTurns] = useState([]);
   const conversation = useRef(0); // bumped by "New question" so a late answer is dropped
+  const threadId = useRef(null); // the server's id for this conversation, from its first answer
   const pending = turns.some((t) => t.status === "pending");
 
   async function run(id, question, history) {
     const started = conversation.current;
     try {
-      const result = await askAgent(question, history);
+      const result = await askAgent(question, history, threadId.current);
       if (conversation.current !== started) return;
+      threadId.current = result.threadId;
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "done", ...result } : t)));
     } catch (err) {
       if (conversation.current !== started) return;
@@ -82,6 +84,7 @@ export default function App() {
 
   function newQuestion() {
     conversation.current += 1;
+    threadId.current = null;
     setTurns([]);
   }
 

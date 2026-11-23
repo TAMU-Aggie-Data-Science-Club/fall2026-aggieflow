@@ -1,5 +1,7 @@
 """Tests for api/main.py. The agent is replaced with a fake, so no model calls."""
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,7 +12,7 @@ PASSAGE = {"id": "student-rules:rule01:0", "source": "student-rules", "title": "
            "text": "...", "source_url": URL}
 
 
-def fake_answer(question, history=None, metadata=None):
+def fake_answer(question, history=None, metadata=None, thread_id=None):
     return {
         "answer": f"Four ({URL}).\n\nSources:\n- {URL}",
         "sources": [PASSAGE, PASSAGE],
@@ -34,7 +36,9 @@ def test_chat(client, monkeypatch):
     monkeypatch.setattr(api.main, "answer", fake_answer)
     r = client.post("/chat", json={"question": "how many q drops do i get"})
     assert r.status_code == 200
-    assert r.json() == {
+    body = r.json()
+    assert uuid.UUID(body.pop("thread_id"))  # a new conversation gets an id
+    assert body == {
         "answer": f"Four ({URL}).",
         "sources": [{"title": "Rule 1", "source_url": URL, "source": "student-rules"}],
         "tools": ["search_student_rules"],
@@ -42,7 +46,20 @@ def test_chat(client, monkeypatch):
     }
 
 
-def grade_answer(question, history=None, metadata=None):
+def test_chat_continues_the_thread_it_is_given(client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(api.main, "answer", lambda q, **kw: seen.append(kw["thread_id"]) or fake_answer(q))
+    thread = str(uuid.uuid4())
+    assert client.post("/chat", json={"question": "and summer?", "thread_id": thread}).json()["thread_id"] == thread
+    assert seen == [thread]
+
+
+def test_chat_rejects_a_thread_id_that_is_not_a_uuid(client, monkeypatch):
+    monkeypatch.setattr(api.main, "answer", fake_answer)
+    assert client.post("/chat", json={"question": "hi", "thread_id": "../other"}).status_code == 422
+
+
+def grade_answer(question, history=None, metadata=None, thread_id=None):
     calls = [
         {"round": 1, "name": "get_course_grades", "args": {"course": "CHEM 107"}, "error": False},
         {"round": 2, "name": "get_professor_grades", "args": {"course": "chem107", "professor": "hall"}, "error": False},
@@ -67,7 +84,7 @@ def test_chat_returns_a_grade_chart_per_course_looked_up(client, monkeypatch):
 
 def test_a_professor_lookup_makes_no_grade_chart(client, monkeypatch):
     # get_professor_grades answers with all-time numbers; the chart is since 2023, so they'd disagree
-    def professor_only(question, history=None, metadata=None):
+    def professor_only(question, history=None, metadata=None, thread_id=None):
         calls = [{"round": 1, "name": "get_professor_grades", "args": {"course": "CHEM 107", "professor": "hall"}, "error": False}]
         return {**fake_answer(question), "calls": calls}
 
@@ -88,7 +105,7 @@ def test_a_grade_chart_that_fails_does_not_fail_the_answer(client, monkeypatch):
 def test_chat_passes_history(client, monkeypatch):
     got = {}
 
-    def spy(question, history=None, metadata=None):
+    def spy(question, history=None, metadata=None, thread_id=None):
         got["history"] = history
         return fake_answer(question)
 

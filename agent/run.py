@@ -7,32 +7,54 @@
 Needs GOOGLE_API_KEY in your environment or in a .env file at the repo root.
 Set AGGIEFLOW_MODEL to try another model (default: google_genai:gemini-3.5-flash-lite, temperature 0).
 Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY to send each run to LangSmith (see .env.example).
+Set AGGIEFLOW_CHECKPOINTS=atlas to keep conversations (threads) in Atlas instead of memory.
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
 
-from agent.checks import finalize, tools_called
 from agent.tools import GROUP_OF
 
 ROOT = Path(__file__).resolve().parent.parent
-_graph = None
+CHECKPOINT_TTL_SECONDS = 7 * 24 * 60 * 60  # Atlas deletes a thread's checkpoints a week after they're written
+_graphs = {}
 
 
-def _get_graph():
-    global _graph
-    if _graph is None:
+def checkpointer():
+    """Where threads are kept. AGGIEFLOW_CHECKPOINTS=atlas: the checkpoints and
+    checkpoint_writes collections next to the passages, which needs a MONGODB_URI user
+    that can write (members' read-only user can't). Otherwise memory: threads last
+    until the process restarts."""
+    if os.environ.get("AGGIEFLOW_CHECKPOINTS") == "atlas":
+        from langgraph.checkpoint.mongodb import MongoDBSaver
+        from pymongo import MongoClient
+
+        client = MongoClient(os.environ["MONGODB_URI"], serverSelectionTimeoutMS=5_000,
+                             appname="aggieflow-checkpoints")
+        return MongoDBSaver(client, db_name=os.environ.get("MONGODB_DB", "aggieflow"),
+                            ttl=CHECKPOINT_TTL_SECONDS)
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    return InMemorySaver()
+
+
+def _get_graph(threads: bool = False):
+    """The agent graph, built once. threads=True compiles it with checkpointer(), for
+    answers in a thread; without a thread nothing is stored, as in evals."""
+    if threads not in _graphs:
         from dotenv import load_dotenv
 
-        from agent.graph import build_graph
+        from agent.graph import build_graph, default_model
 
         load_dotenv()
-        _graph = build_graph()
-    return _graph
+        model = _graphs["model"] = _graphs.get("model") or default_model()
+        _graphs[threads] = build_graph(model, checkpointer() if threads else None)
+    return _graphs[threads]
 
 
 def trace(messages) -> list[list[str]]:
@@ -91,12 +113,14 @@ def run_metadata() -> dict:
 
 
 def answer(question: str, graph=None, metadata: dict | None = None,
-           history: list[dict] | None = None) -> dict:
+           history: list[dict] | None = None, thread_id: str | None = None) -> dict:
     """Answer one question. This is what the Scorer (#40) and members' evals call.
 
     history is the conversation so far, oldest first:
     [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}].
-    The caller keeps it and sends it every turn; nothing is stored between calls.
+    Without thread_id the caller keeps it and sends it every turn, and nothing is stored.
+    With thread_id the conversation is kept between calls (see checkpointer()), and
+    history only starts a thread that has no messages yet.
 
     metadata is added to the LangSmith trace, e.g. {"question_id": "sr-03"}.
     The model, temperature, search mode and git commit are always added.
@@ -110,13 +134,14 @@ def answer(question: str, graph=None, metadata: dict | None = None,
     }
     "documents" is what groundedness and retrieval-relevance judges read.
     """
-    graph = graph or _get_graph()
+    graph = graph or _get_graph(threads=thread_id is not None)
     config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
+    if thread_id is not None:
+        config["configurable"] = {"thread_id": thread_id}
     state = graph.invoke({"question": question, "history": history or []}, config=config)
     retrieved = state.get("sources", [])
-    _, cited = finalize(state["messages"][-1].text, retrieved, tools_called(state["messages"]))
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
-    return {"answer": state["answer"], "sources": cited, "documents": documents,
+    return {"answer": state["answer"], "sources": state["cited"], "documents": documents,
             "trace": trace(state["messages"]), "calls": tool_calls(state["messages"])}
 
 

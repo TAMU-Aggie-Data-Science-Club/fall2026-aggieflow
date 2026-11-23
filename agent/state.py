@@ -1,6 +1,5 @@
 """Shared types for the AggieFlow agent."""
 
-import operator
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage
@@ -22,15 +21,21 @@ class Passage(TypedDict):
     fetched_at: str
 
 
+def add_sources(old: list[Passage] | None, new: list[Passage] | None) -> list[Passage]:
+    """Merge passages with +, so every round's are kept. None clears them: a new turn
+    starts with none, even when a checkpointer keeps the previous turn's state."""
+    return [] if new is None else (old or []) + new
+
+
 class State(TypedDict, total=False):
     question: str
     # Earlier turns, oldest first: [{"role": "user" | "assistant", "content": str}].
-    # The caller keeps the conversation; nothing is stored here between runs.
+    # Starts a conversation; once a thread has messages, the checkpointer keeps them instead.
     history: list[dict]
     messages: Annotated[list[AnyMessage], add_messages]
-    # Every passage any tool returned, across all rounds, so it is
-    # merged with + instead of overwritten.
-    sources: Annotated[list[Passage], operator.add]
+    # Every passage any tool returned this turn, across all rounds.
+    sources: Annotated[list[Passage], add_sources]
     rounds: int  # how many times the agent has asked for tools
     answer: str
+    cited: list[Passage]  # the passages the answer cites
 

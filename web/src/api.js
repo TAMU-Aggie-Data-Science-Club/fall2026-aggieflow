@@ -2,17 +2,19 @@ const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replac
 const MAX_HISTORY = 20; // the API rejects more than 20 earlier messages
 
 /**
- * Ask the agent one question. `history` is the earlier turns, oldest first, as
- * [{role: "user" | "assistant", content}]. Resolves to {answer, sources, tools, grades}.
+ * Ask the agent one question. `threadId` is the conversation to continue (null starts
+ * one). `history` is the earlier turns, oldest first, as [{role: "user" | "assistant",
+ * content}]: the server keeps the thread, and uses history only if it lost it (a restart).
+ * Resolves to {answer, sources, tools, grades, threadId}.
  * Throws an Error whose message is safe to show the student.
  */
-export async function askAgent(question, history) {
+export async function askAgent(question, history, threadId = null) {
   let response;
   try {
     response = await fetch(`${API_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history: history.slice(-MAX_HISTORY) }),
+      body: JSON.stringify({ question, history: history.slice(-MAX_HISTORY), thread_id: threadId }),
     });
   } catch {
     throw new Error("Can't reach AggieFlow right now. Check your connection and try again.");
@@ -34,5 +36,6 @@ export async function askAgent(question, history) {
     sources: data.sources ?? [],
     tools: data.tools ?? [],
     grades: data.grades ?? [], // grade charts, one per course the agent looked up on anex.us
+    threadId: data.thread_id ?? null,
   };
 }

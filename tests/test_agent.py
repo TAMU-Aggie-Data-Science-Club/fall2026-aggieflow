@@ -226,7 +226,7 @@ def test_answer_tags_the_trace_with_run_and_question_metadata():
         def invoke(self, inputs, config=None):
             seen["config"] = config
             return {"messages": [AIMessage(f"Four ({RULE['source_url']}).")],
-                    "sources": [RULE, RULE], "answer": "Four."}
+                    "sources": [RULE, RULE], "answer": "Four.", "cited": [RULE]}
 
     result = answer("how many q drops", graph=FakeGraph(), metadata={"question_id": "sr-01"})
     meta = seen["config"]["metadata"]
@@ -282,3 +282,64 @@ def test_history_rejects_unknown_roles():
 def test_clarifying_question_gets_no_sources_list():
     text, cited = finalize("Which Professor Kim: Math or Finance?", [RULE])
     assert text == "Which Professor Kim: Math or Finance?" and cited == []
+
+
+# --- threads (checkpointer) -------------------------------------------------
+
+def thread_graph(model):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    return build_graph(model, InMemorySaver())
+
+
+def test_a_thread_keeps_earlier_questions_and_answers_but_not_tool_results():
+    model = RecordingModel([
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1")]),
+        AIMessage("Four (https://student-rules.tamu.edu/rule01/)."),
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drop summer"}, "c2")]),
+        AIMessage("Same in summer (https://student-rules.tamu.edu/rule01/)."),
+    ])
+    graph = thread_graph(model)
+    answer("how many q drops do i get", graph=graph, thread_id="t1")
+    second = answer("what about summer?", graph=graph, thread_id="t1")
+
+    sent = [m.text for m in model.seen[2][1:]]  # turn 2's first call, after the system prompt
+    assert sent == ["how many q drops do i get", "Four (https://student-rules.tamu.edu/rule01/).",
+                    "what about summer?"]
+    assert [p["source_url"] for p in second["sources"]] == [RULE["source_url"]]
+    assert len(second["documents"]) == 1  # sources reset: only turn 2's passage
+    assert [c["name"] for c in second["calls"]] == ["search_student_rules"]  # only turn 2's calls
+
+
+def test_threads_are_separate_and_history_only_starts_one():
+    model = RecordingModel([AIMessage("Hi!"), AIMessage("Hello again."), AIMessage("Hey.")])
+    graph = thread_graph(model)
+    seed = [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "before"}]
+    answer("hello", graph=graph, thread_id="a", history=seed)
+    answer("hello again", graph=graph, thread_id="a", history=seed)  # ignored: the thread has messages
+    answer("hey", graph=graph, thread_id="b")
+
+    # the thread keeps the answer as shown: a no-tool reply became the intro
+    assert [m.text for m in model.seen[1][1:]] == ["earlier", "before", "hello", INTRO, "hello again"]
+    assert [m.text for m in model.seen[2][1:]] == ["hey"]
+
+
+def test_a_turn_that_failed_partway_is_dropped_from_the_thread():
+    class FailsOnce(RecordingModel):
+        def invoke(self, messages):
+            if len(self.seen) == 1:  # turn 1's second call, after its tool call
+                self.seen.append(messages)
+                raise RuntimeError("model down")
+            return super().invoke(messages)
+
+    model = FailsOnce([
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1")]),
+        AIMessage("Four (https://student-rules.tamu.edu/rule01/)."),
+    ])
+    graph = thread_graph(model)
+    with pytest.raises(RuntimeError):
+        answer("how many q drops do i get", graph=graph, thread_id="t")
+    answer("how many q drops do i get", graph=graph, thread_id="t")  # the student retries
+
+    # the retry sees only its own question: no dangling tool call from the failed turn
+    assert [m.text for m in model.seen[2][1:]] == ["how many q drops do i get"]
