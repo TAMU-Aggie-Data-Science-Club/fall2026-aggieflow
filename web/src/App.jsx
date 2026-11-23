@@ -329,11 +329,13 @@ function Choices({ question, onPick }) {
   return (
     <div className="choices">
       <p>{question.prompt}</p>
-      <Suggestions className={SUGGESTIONS_WRAP} role="group" aria-label={question.prompt}>
-        {question.options.map((option) => (
-          <Suggestion key={option} suggestion={option} className={SUGGESTION_CHIP} disabled={!onPick} onClick={onPick} />
-        ))}
-      </Suggestions>
+      {question.options.length > 0 && (
+        <Suggestions className={SUGGESTIONS_WRAP} role="group" aria-label={question.prompt}>
+          {question.options.map((option) => (
+            <Suggestion key={option} suggestion={option} className={SUGGESTION_CHIP} disabled={!onPick} onClick={onPick} />
+          ))}
+        </Suggestions>
+      )}
     </div>
   );
 }

@@ -121,6 +121,31 @@ Gemini 3.5 Flash Lite ignores the temperature setting (the library warns "temper
 
 **Reruns:** 8 of the 54 first-pass runs failed on Gemini's free-tier limit of 15 requests a minute, because the three parts ran at once on one Google key. Those 8 were rerun one at a time on the same commit, and their results replaced the failed ones. `GoogleRateLimitError` is now retried like Groq's rate limits.
 
+## When the agent asks which one (#129)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), hybrid search; commit 6f9a5c6; LangSmith tracing on
+```
+
+The 16 tasks in `ask-aguw0kie124.jsonl`, 3 runs each, with the `correctness` judge. 6 should ask (2 Leyks, 5 Kims, Nguyens in CS, "the minor", "the easiest professor") and 10 shouldn't: the course or full name settles it, or a short answer covers every case. Task 10's reference was fixed after this run (below) and the task was rerun 3 times on `d080309`; the numbers below include that rerun.
+
+| | Result |
+|---|---|
+| **pass@1** | **88%** |
+| **pass^3** (passed all 3 runs) | **75%** (12 of 16) |
+| Over-asking (asked when it shouldn't) | **0 of 30** runs |
+| Under-asking (didn't ask when it should) | **2 of 18** runs |
+| `asked_right` / `correctness` / `cited_page` | 96% / 88% / 100% |
+| Latency p50 / p95 | 3.2 s / 7.4 s |
+
+**Tasks that didn't pass every run:**
+- **`ask-aguw0kie124-04`** ("is nguyen good for cs"), 1 of 3. Khanh and Tung Nguyen both teach CS, and in 2 runs the agent picked one instead of asking. These are the only under-asking runs.
+- **`ask-aguw0kie124-16`** ("what gpa do i need to stay in good standing"), 1 of 3. In 2 runs it gave only the undergraduate 2.00 rule and left out graduate students' 3.00. That's the "cover every case" answer coming out incomplete.
+- **`ask-aguw0kie124-03`** ("how is dr kim"), 2 of 3: one run had a grade number `numbers_match` couldn't find.
+- **`ask-aguw0kie124-05`** ("what are the requirements for the minor"), 2 of 3: the judge marked one answer incorrect.
+
+**Question fixes:** before the run, references for the Leyk and cybersecurity-minor tasks were cut down to their key facts. The judge had failed correct answers over "below" vs "about" average and over the catalog page listing two GPAs for joining the minor (2.5 to declare, 2.75 to be eligible). Task 05's reply became "the cybersecurity minor in computer science": with just "cybersecurity", the agent fairly asked again, because a Maritime Cybersecurity minor (Galveston) also exists, and the runner sends only one reply. After the run, task 10's reference stopped requiring the Fall 2026 Q-drop date, which has already passed; the rule, the dates, or both now count.
+
 ## Reliability (pass^3)
 
 The 40 questions, 3 runs each, with code graders only (`cited_page`, `tool_match`, `numbers_match`, `not_sure_correct`; no judge). Commit `aa05068`, with the same agent as `fb3e7f6`. Experiment: **Gemini 3.5 Flash Lite · 40 questions × 3 (pass^3) · no judge · aa05068**.

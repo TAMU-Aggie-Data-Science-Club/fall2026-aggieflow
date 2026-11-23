@@ -38,4 +38,5 @@ class State(TypedDict, total=False):
     rounds: int  # how many times the agent has asked for tools
     answer: str
     cited: list[Passage]  # the passages the answer cites
+    asked: dict | None  # without a checkpointer: the {prompt, options} the turn ended on
 

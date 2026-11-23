@@ -136,14 +136,20 @@ def default_tools(path: Path) -> list[str] | None:
 
 
 def _bad_optional_field(q: dict) -> str | None:
-    """Why an optional field (tools, also_accept, args, set, tags) is malformed, or None."""
-    for key in ("tools", "tags", "also_accept"):
+    """Why an optional field (tools, also_accept, args, set, tags, ask, options, reply) is malformed, or None."""
+    for key in ("tools", "tags", "also_accept", "options"):
         if key in q and not (isinstance(q[key], list) and all(isinstance(t, str) for t in q[key])):
             return f"{key} must be a list of strings"
     if "args" in q and not isinstance(q["args"], dict):
         return "args must be an object"
     if "set" in q and q["set"] not in SETS:
         return f"set must be one of {', '.join(SETS)}"
+    if "ask" in q and not isinstance(q["ask"], bool):
+        return "ask must be true or false"
+    if ("options" in q or "reply" in q) and q.get("ask") is not True:
+        return "options and reply need ask: true"
+    if q.get("ask") is True and not (isinstance(q.get("reply"), str) and q["reply"].strip()):
+        return "ask: true needs a reply (what the student says back)"
     return None
 
 
