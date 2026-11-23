@@ -94,6 +94,33 @@ All four judges ran on the 40 answers saved from the first pass^3 run (`agent-ke
 - Groundedness is about **90%**: roughly 1 answer in 10 adds a detail its passages don't support. These are mostly small errors (a mislabeled number, a merged rule), not made-up facts.
 - **The judge alone isn't reliable enough to fail runs on.** Only 4 of its 9 flags were real, and its 31 passes weren't hand-checked, so its miss rate is unknown. It should stay outside the pass rule until it's calibrated on answers with planted errors (#88's optional item).
 
+## RateMyProfessors questions (#114)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), hybrid search; commit e38fca3; LangSmith tracing off
+```
+
+The 18 ratings questions (14 in `ratemyprofessors-rushilsagar.jsonl`, plus `anex-rushilsagar-10`–`12` and `extra-krishjayanth-13`), 3 runs each, with the `correctness` judge. They ran in 3 parts (`eval/ratings-part1.txt`–`part3.txt`), one Groq key each, and were merged with `eval/summarize.py eval/results/ratings-part*.jsonl`. On questions that expect both ratings and grades, the judge grades only the ratings verdict and `numbers_match` checks the numbers (#128).
+
+| | Result |
+|---|---|
+| **pass@1** | **85%** [70%, 96%] |
+| **pass^3** (passed all 3 runs) | **72%** (13 of 18) |
+| `correctness` / `numbers_match` / `cited_page` | 84% / 95% / 96% |
+| Said "not sure" on an answerable question | 1 of 54 runs |
+| Latency p50 / p95 | 6.0 s / 39.5 s |
+
+Ratings answers are slower than the 40-question sample's because the agent looks professors up live, often several per question.
+
+**Questions that didn't pass every run:**
+- **`ratemyprofessors-rushilsagar-11`** ("what do students say about hassanikhenar for csce 221"), 0 of 3. RateMyProfessors has no "Hassanikhenar", so the name suggestions from #117 offer "Ahmad Hassani", a CSCE 221 grad-student instructor, and the agent answers with his reviews. The reference says he has no page. anex.us lists HASSANIKHENAR A teaching CSCE 221 for one term (Spring 2025), so this may be the same person under a shortened name, which would make the reference out of date, or it may be someone else's reviews. **Needs a decision** before it counts either way.
+- **`anex-rushilsagar-12`** ("best professor for math 151"), 1 of 3. In 2 runs the judge said the answer didn't match the reference, and one run also had a grade number `numbers_match` couldn't find. It passed 3 extra diagnostic runs, so it's flaky rather than broken.
+- **`ratemyprofessors-rushilsagar-03`**, **`-09`** and **`extra-krishjayanth-13`**, 2 of 3 each: one run each the judge marked incorrect (`-03`'s also cited no page). Each passed an extra diagnostic run.
+
+Gemini 3.5 Flash Lite ignores the temperature setting (the library warns "temperature will be ignored"), so wording, and sometimes tool calls, change from run to run. That's why pass^3 sits below pass@1 here. The result files don't save answer text, so the reasons above come from the scores plus one diagnostic rerun per question.
+
+**Reruns:** 8 of the 54 first-pass runs failed on Gemini's free-tier limit of 15 requests a minute, because the three parts ran at once on one Google key. Those 8 were rerun one at a time on the same commit, and their results replaced the failed ones. `GoogleRateLimitError` is now retried like Groq's rate limits.
+
 ## Reliability (pass^3)
 
 The 40 questions, 3 runs each, with code graders only (`cited_page`, `tool_match`, `numbers_match`, `not_sure_correct`; no judge). Commit `aa05068`, with the same agent as `fb3e7f6`. Experiment: **Gemini 3.5 Flash Lite · 40 questions × 3 (pass^3) · no judge · aa05068**.

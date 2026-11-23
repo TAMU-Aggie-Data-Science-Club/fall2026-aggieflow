@@ -32,7 +32,9 @@ PASS = 0.85
 KEYS = [j.__name__ for j in JUDGES]
 
 
-RETRY = {"RateLimitError", "APIConnectionError", "APITimeoutError"}  # worth waiting out
+# Worth waiting out. GoogleRateLimitError is Gemini's per-minute limit (15 requests a minute on
+# the free tier), which the agent hits when several eval runs share one Google key.
+RETRY = {"RateLimitError", "GoogleRateLimitError", "APIConnectionError", "APITimeoutError"}
 
 
 def with_retry(fn, *args, tries=8, wait=15, **kwargs):
