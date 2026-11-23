@@ -57,9 +57,9 @@ export default function GradeChart({ chart }) {
     <section className="grade-chart" aria-label={`${chart.course} grades by professor`}>
       <div className="grade-chart-head">
         <div className="grade-chart-titles">
-          <div className="grade-chart-title">{chart.course} · grades by professor</div>
+          <div className="grade-chart-title">{chart.course} · grades by professor since {chart.since}</div>
           <div className="grade-chart-sub">
-            Since {chart.since}, professors with at least {chart.min_students} graded students ·{" "}
+            Professors with at least {chart.min_students} graded students ·{" "}
             <a href={chart.source_url} target="_blank" rel="noopener noreferrer">
               anex.us
             </a>

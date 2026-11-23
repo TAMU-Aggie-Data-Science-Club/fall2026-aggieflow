@@ -11,7 +11,8 @@ from agent import data
 from agent.run import answer
 
 logger = logging.getLogger(__name__)
-GRADE_TOOLS = {"get_course_grades", "get_professor_grades"}
+# Only course lookups: get_professor_grades answers with all-time numbers, the chart is since 2023.
+GRADE_TOOLS = {"get_course_grades"}
 
 
 def grade_charts(calls: list[dict]) -> list[dict]:
