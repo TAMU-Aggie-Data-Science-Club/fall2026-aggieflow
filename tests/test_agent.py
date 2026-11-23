@@ -425,3 +425,13 @@ def test_options_are_trimmed_deduplicated_and_capped():
 
     q = question_of({"args": {"prompt": " Which? ", "options": [" A ", "A", "", *map(str, range(10))]}})
     assert q["prompt"] == "Which?" and q["options"][:2] == ["A", "0"] and len(q["options"]) == MAX_OPTIONS
+
+
+def test_ask_user_with_one_option_is_not_asked():
+    model = RecordingModel([
+        AIMessage("", tool_calls=[call("ask_user", {"prompt": "Which Professor Kim?", "options": ["Jin Kim"]}, "a1")]),
+        AIMessage("Jin Kim is rated well."),
+    ])
+    result = answer("is professor kim good", graph=thread_graph(model), thread_id="t")
+    assert result["question"] is None
+    assert "only one option (Jin Kim)" in [m.content for m in model.seen[1] if getattr(m, "name", None) == "ask_user"][0]
