@@ -495,6 +495,9 @@ def _rmp_passage(t: dict, fetched_at: str) -> Passage:
         + (f", {round(take_again)}% would take again" if take_again is not None and take_again >= 0 else "")
         + f", from {t['numRatings']} ratings."
     )
+    if t.get("closestTo"):  # found by correcting a misspelled name (#117)
+        summary = (f"No exact match for {t['closestTo']!r}; {name} is the closest name on "
+                   f"RateMyProfessors (say so in the answer). " + summary)
     lines = [summary]
     reviews = [e["node"] for e in t["ratings"]["edges"]]
     if reviews:
@@ -525,7 +528,11 @@ def _taught(t: dict, dept: str, number: str) -> bool:
     return False
 
 
-def _rmp_closest(key: str) -> list[str]:
+RMP_TYPO_MIN_LETTERS = 6  # shorter names are too easy to confuse: 'leik' is close to 'Lei'
+RMP_TYPO_SIMILARITY = 0.85  # 'eruhimova'/'Erukhimova' 0.95, 'altemoss'/'Altemose' 0.88, 'hassanikhenar'/'Hassani' 0.7
+
+
+def _rmp_closest(key: str) -> list[dict]:
     """Professors whose name starts like the longest word of a name that matched nobody:
     RMP matches the start of a name, so 'eru' finds Erukhimova when 'eruhimova' doesn't."""
     word = max(key.split(), key=len)
@@ -533,9 +540,20 @@ def _rmp_closest(key: str) -> list[str]:
         if n < len(word):
             edges = _fetch_rmp(word[:n])["data"]["newSearch"]["teachers"]["edges"]
             if edges:
-                return [f"{e['node']['firstName'].strip()} {e['node']['lastName'].strip()}"
-                        for e in edges[:RMP_MAX_PROFESSORS]]
+                return [e["node"] for e in edges[:RMP_MAX_PROFESSORS]]
     return []
+
+
+def _is_typo_of(word: str, last_name: str) -> bool:
+    """Is a RateMyProfessors last name the asked-for word with a small spelling difference?"""
+    from difflib import SequenceMatcher
+
+    last = " ".join(_WORD.findall(last_name.lower()))
+    return len(word) >= RMP_TYPO_MIN_LETTERS and SequenceMatcher(None, word, last).ratio() >= RMP_TYPO_SIMILARITY
+
+
+def _name(t: dict) -> str:
+    return f"{t['firstName'].strip()} {t['lastName'].strip()}"
 
 
 def professor_ratings(professor: str, course: str | None = None) -> list[Passage]:
@@ -556,7 +574,14 @@ def professor_ratings(professor: str, course: str | None = None) -> list[Passage
             raw = _fetch_rmp(key)
             try:
                 teachers = [e["node"] for e in raw["data"]["newSearch"]["teachers"]["edges"]]
-                closest = None if teachers else _rmp_closest(key)
+                closest = None
+                if not teachers:  # a misspelling, or no page: look for names that start the same way
+                    word = max(key.split(), key=len)
+                    near = _rmp_closest(key)
+                    teachers = [t for t in near if _is_typo_of(word, t["lastName"])]
+                    closest = None if teachers else [_name(t) for t in near]
+                    for t in teachers:  # the answer should say the name was corrected
+                        t["closestTo"] = professor
                 teachers = [t for t in teachers if t["numRatings"] > 0]
                 # RMP matches any one word ('John Keyser' finds every John), so
                 # professors whose last name was asked for come first.
@@ -569,9 +594,10 @@ def professor_ratings(professor: str, course: str | None = None) -> list[Passage
                 raise RuntimeError("RateMyProfessors changed its response format; the tool needs updating") from err
             _rmp_cache[key] = (time.monotonic(), teachers, fetched_at, closest)
     if closest is not None:  # RMP's search doesn't fuzzy-match: 'eruhimova' finds nobody (#117)
-        hint = (f" Names on RateMyProfessors that start the same way: {', '.join(closest)}. If one is "
-                "the professor asked about, search again with that name; if none is, they likely "
-                "have no RateMyProfessors page." if closest else "")
+        hint = (f" Names on RateMyProfessors that start the same way: {', '.join(closest)}. These are "
+                "different names, so don't give their ratings as this professor's. If one might be the "
+                "same person, call ask_user with those names and 'None of these' as options; "
+                "otherwise say the professor has no RateMyProfessors page." if closest else "")
         raise LookupError(
             f"no Texas A&M professor on RateMyProfessors matches {professor!r}. Its search needs "
             "the exact spelling: try again with another spelling, the last name only, or the name "
