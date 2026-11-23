@@ -343,3 +343,73 @@ def test_a_turn_that_failed_partway_is_dropped_from_the_thread():
 
     # the retry sees only its own question: no dangling tool call from the failed turn
     assert [m.text for m in model.seen[2][1:]] == ["how many q drops do i get"]
+
+
+# --- ask_user (the agent asks the student) --------------------------------------
+
+LEYK = {"prompt": "Which Professor Leyk?",
+        "options": ["Teresa Leyk (Computer Science)", "Zbigniew Leyk (Engineering)"]}
+
+
+def asks(id="a1", **extra):
+    return AIMessage("", tool_calls=[call("ask_user", {**LEYK, **extra}, id)])
+
+
+def test_a_thread_pauses_on_the_question_and_the_reply_resumes_it():
+    model = RecordingModel([
+        asks(),
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1")]),
+        AIMessage("Students like Teresa Leyk (https://student-rules.tamu.edu/rule01/)."),
+    ])
+    graph = thread_graph(model)
+    first = answer("is professor leyk good", graph=graph, thread_id="t")
+    assert first["question"] == LEYK and first["sources"] == []
+    assert first["answer"].startswith("Which Professor Leyk?\n- Teresa Leyk")
+
+    second = answer("Teresa Leyk (Computer Science)", graph=graph, thread_id="t")
+    assert second["question"] is None
+    assert second["answer"].startswith("Students like Teresa Leyk")
+    assert [p["source_url"] for p in second["sources"]] == [RULE["source_url"]]
+    # the model saw the student's reply as the result of its ask_user call
+    assert model.seen[1][-1].content == "The student answered: Teresa Leyk (Computer Science)"
+    assert graph.get_state({"configurable": {"thread_id": "t"}}).interrupts == ()
+
+
+def test_after_an_asked_turn_the_thread_keeps_only_the_question_and_answer():
+    # looks up, asks, then answers from what it already found
+    liked = "Teresa Leyk is well liked (https://student-rules.tamu.edu/rule01/)."
+    model = RecordingModel([AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1")]),
+                            asks(), AIMessage(liked), AIMessage("Sure.")])
+    graph = thread_graph(model)
+    answer("is professor leyk good", graph=graph, thread_id="t")
+    result = answer("my own words: the CS one", graph=graph, thread_id="t")  # typed, not an option
+    assert result["answer"].startswith(liked) and len(result["sources"]) == 1  # passages from before the question
+    answer("thanks", graph=graph, thread_id="t")
+    assert "The student answered: my own words: the CS one" in model.seen[2][-1].content
+    assert [m.text for m in model.seen[3][1:]] == ["is professor leyk good", liked, "thanks"]
+
+
+def test_without_a_thread_the_question_is_the_answer():
+    result = answer("is professor leyk good", graph=build_graph(ScriptedModel([asks()])))
+    assert result["answer"] == "Which Professor Leyk?\n- Teresa Leyk (Computer Science)\n- Zbigniew Leyk (Engineering)"
+    assert result["sources"] == []
+
+
+def test_ask_user_with_other_tools_runs_the_tools_and_skips_the_question():
+    from agent.graph import NOT_ASKED
+
+    model = RecordingModel([
+        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1"),
+                                  call("ask_user", LEYK, "a1")]),
+        AIMessage("Four (https://student-rules.tamu.edu/rule01/)."),
+    ])
+    result = answer("q drops?", graph=thread_graph(model), thread_id="t")
+    assert result["question"] is None and result["answer"].startswith("Four")
+    assert NOT_ASKED in [m.content for m in model.seen[1] if getattr(m, "name", None) == "ask_user"]
+
+
+def test_options_are_trimmed_deduplicated_and_capped():
+    from agent.graph import MAX_OPTIONS, question_of
+
+    q = question_of({"args": {"prompt": " Which? ", "options": [" A ", "A", "", *map(str, range(10))]}})
+    assert q["prompt"] == "Which?" and q["options"][:2] == ["A", "0"] and len(q["options"]) == MAX_OPTIONS

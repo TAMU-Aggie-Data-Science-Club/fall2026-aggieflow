@@ -43,6 +43,7 @@ def test_chat(client, monkeypatch):
         "sources": [{"title": "Rule 1", "source_url": URL, "source": "student-rules"}],
         "tools": ["search_student_rules"],
         "grades": [],
+        "question": None,
     }
 
 
@@ -134,3 +135,11 @@ def test_chat_agent_error(client, monkeypatch):
     r = client.post("/chat", json={"question": "hi"})
     assert r.status_code == 503
     assert "rate limit" not in r.text
+
+
+def test_chat_returns_the_question_when_the_agent_asks(client, monkeypatch):
+    asked = {"prompt": "Which Professor Leyk?", "options": ["Teresa Leyk (Computer Science)", "Zbigniew Leyk (Engineering)"]}
+    monkeypatch.setattr(api.main, "answer", lambda q, **kw: {**fake_answer(q), "answer": "Which Professor Leyk?",
+                                                              "sources": [], "calls": [], "question": asked})
+    body = client.post("/chat", json={"question": "is professor leyk good"}).json()
+    assert body["question"] == asked and body["sources"] == []

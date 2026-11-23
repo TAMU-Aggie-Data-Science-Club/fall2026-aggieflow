@@ -104,6 +104,8 @@ def chat(request: request):
             "tools": tools,
             "grades": grade_charts(result["calls"]),
             "thread_id": thread_id,
+            #set when the agent asks which one the student means: {prompt, options}; reply with the same thread_id
+            "question": result.get("question"),
         }
     except Exception:
         logger.exception("Chat request failed")

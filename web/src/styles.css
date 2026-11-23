@@ -321,6 +321,15 @@ button {
   border-color: var(--maroon);
   color: var(--maroon);
 }
+.chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+  border-color: var(--line);
+  color: var(--ink);
+}
+.choices p {
+  margin: 0 0 12px;
+}
 
 /* --- Conversation -------------------------------------------------------- */
 

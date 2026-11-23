@@ -18,6 +18,9 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+from langgraph.types import Command
+
+from agent.graph import question_text
 from agent.tools import GROUP_OF
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -131,18 +134,31 @@ def answer(question: str, graph=None, metadata: dict | None = None,
         "documents": [every passage the tools returned, cited or not],
         "trace": [[tool calls], ...] round by round,
         "calls": [{"round", "name", "args", "error"}, ...] every tool call in order,
+        "question": {"prompt", "options"} when the agent asked the student instead of
+                    answering (ask_user), else None. "answer" is then the question as text.
     }
     "documents" is what groundedness and retrieval-relevance judges read.
+
+    In a thread that is waiting on such a question, `question` is the student's reply
+    (an option or their own words) and the paused turn goes on from there.
     """
     graph = graph or _get_graph(threads=thread_id is not None)
     config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
     if thread_id is not None:
         config["configurable"] = {"thread_id": thread_id}
-    state = graph.invoke({"question": question, "history": history or []}, config=config)
+    if thread_id is not None and graph.get_state(config).interrupts:
+        inputs = Command(resume=question)  # the student's reply to ask_user
+    else:
+        inputs = {"question": question, "history": history or []}
+    state = graph.invoke(inputs, config=config)
     retrieved = state.get("sources", [])
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
-    return {"answer": state["answer"], "sources": state["cited"], "documents": documents,
-            "trace": trace(state["messages"]), "calls": tool_calls(state["messages"])}
+    result = {"trace": trace(state["messages"]), "calls": tool_calls(state["messages"]),
+              "documents": documents, "question": None}
+    if state.get("__interrupt__"):  # paused on ask_user: the student's reply resumes it
+        asked = state["__interrupt__"][0].value
+        return {**result, "answer": question_text(asked), "sources": [], "question": asked}
+    return {**result, "answer": state["answer"], "sources": state["cited"]}
 
 
 def _print(question: str, result: dict) -> None:

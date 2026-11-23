@@ -1,10 +1,13 @@
 """The AggieFlow agent graph: one agent and one tool node.
 
     question (+ history) -> normalize -> agent <-> tools
-                               \\-> check -> END
+                                         <-> ask    (ask_user: the student picks an option)
+                                          \\-> check -> END
 
 Compiled with a checkpointer, a thread keeps its conversation between calls:
-normalize trims it to earlier questions and final answers before each turn.
+normalize trims it to earlier questions and final answers before each turn, and
+ask pauses the turn (interrupt) until the student answers. Without one, ask ends
+the turn with the question as the answer.
 
 The agent loops until it answers or hits MAX_ROUNDS. Every tool call the model
 makes in one turn runs at the same time, whatever group the tool belongs to.
@@ -17,6 +20,8 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Syst
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.config import get_executor_for_config
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
+from pydantic import BaseModel, Field
 
 from agent.checks import finalize, tools_called
 from agent.state import State
@@ -38,7 +43,8 @@ look up, including requests to write or do something for the student, gets "not 
 Earlier messages are the conversation so far. Use them to understand
 follow-ups like "what about summer?", but look facts up again with your tools.
 If several things match and the conversation doesn't say which one
-(for example, two professors named Kim), ask one short question instead of guessing.
+(for example, two professors named Kim), call ask_user with the choices from
+the tool results instead of guessing. Look things up before asking.
 For choosing or judging a professor, use both grades (anex.us) and ratings
 (RateMyProfessors). Questions only about grades (grade distribution, average GPA,
 percent A's, Q-drops) need grades only. Give both sides when they disagree, and say ratings
@@ -97,6 +103,34 @@ def normalize(state: State) -> dict:
     return {"messages": [*earlier, HumanMessage(state["question"])], "rounds": 0, "sources": None}
 
 
+class ask_user(BaseModel):
+    """Ask the student one short question when the answer depends on something they
+    didn't say and the tool results show the choices: for example, which of several
+    professors with the same name. The student picks an option or types a reply."""
+
+    prompt: str = Field(description="The question, like 'Which Professor Leyk?'")
+    options: list[str] = Field(description="2 to 6 short choices from the tool results, "
+                               "like 'Teresa Leyk (Computer Science)'")
+
+
+ASK = "ask_user"
+MAX_OPTIONS = 6
+NOT_ASKED = "Not asked: ask_user can't run with other tools. Use their results first."
+
+
+def question_of(call: dict) -> dict:
+    """The question an ask_user call asks: {"prompt", "options"}."""
+    args = call.get("args") or {}
+    options = [str(o).strip() for o in args.get("options") or [] if str(o).strip()]
+    return {"prompt": str(args.get("prompt") or "Which one do you mean?").strip(),
+            "options": list(dict.fromkeys(options))[:MAX_OPTIONS]}
+
+
+def question_text(question: dict) -> str:
+    """The question as plain text, for callers that can't show buttons."""
+    return "\n".join([question["prompt"], *(f"- {o}" for o in question["options"])])
+
+
 # 0 so the same question gets the same answer, and eval runs can be compared.
 TEMPERATURE = 0
 
@@ -112,14 +146,15 @@ def default_model():
 
 
 def make_agent_node(model):
-    with_tools = model.bind_tools(ALL_TOOLS)
+    with_tools = model.bind_tools([*ALL_TOOLS, ask_user])
 
     def agent(state: State) -> dict:
         messages = [SystemMessage(SYSTEM_PROMPT), *state["messages"]]
         rounds = state.get("rounds", 0)
         if rounds < MAX_ROUNDS:
             reply = with_tools.invoke(messages)
-            return {"messages": [reply], "rounds": rounds + (1 if reply.tool_calls else 0)}
+            looked_up = any(c["name"] != ASK for c in reply.tool_calls)  # asking isn't a round
+            return {"messages": [reply], "rounds": rounds + looked_up}
 
         # Out of rounds: answer with what we have. Some models still try to
         # call a tool here and the API rejects it, so fall back to "not sure".
@@ -136,14 +171,20 @@ def make_agent_node(model):
 
 
 def route(state: State) -> str:
-    """Run tools if the model asked for any, otherwise finish."""
-    return "tools" if getattr(state["messages"][-1], "tool_calls", None) else "check"
+    """Run tools if the model asked for any, ask the student if it only called ask_user,
+    otherwise finish."""
+    calls = getattr(state["messages"][-1], "tool_calls", None)
+    if not calls:
+        return "check"
+    return "ask" if all(c["name"] == ASK for c in calls) else "tools"
 
 
 def make_tools_node():
     tools = {t.name: t for t in ALL_TOOLS}
 
     def run_one(call: dict) -> tuple[ToolMessage, list]:
+        if call["name"] == ASK:  # with other tools: they run, the question doesn't
+            return ToolMessage(NOT_ASKED, tool_call_id=call["id"], name=ASK), []
         tool = tools.get(call["name"])
         try:
             if tool is None:
@@ -167,6 +208,24 @@ def make_tools_node():
     return run_tools
 
 
+def make_ask_node(pause: bool):
+    def ask(state: State) -> dict:
+        """Ask the first ask_user call's question. pause (a checkpointer): wait for the
+        student's reply, then let the agent go on with it. Otherwise end the turn with
+        the question as the answer."""
+        calls = state["messages"][-1].tool_calls
+        question = question_of(calls[0])
+        if not pause:
+            text = question_text(question)
+            return {"messages": [AIMessage(text)], "answer": text, "cited": []}
+        reply = interrupt(question)
+        return {"messages": [ToolMessage(f"The student answered: {reply}" if i == 0 else NOT_ASKED,
+                                         tool_call_id=c["id"], name=ASK)
+                             for i, c in enumerate(calls)]}
+
+    return ask
+
+
 def check(state: State) -> dict:
     """The final answer and the passages it cites. The model's reply is replaced by the
     answer as the student sees it (without the Sources list), so a thread's later turns
@@ -185,9 +244,11 @@ def build_graph(model=None, checkpointer=None):
     graph.add_node("tools", make_tools_node())
     graph.add_edge("tools", "agent")
     graph.add_node("check", check)
+    graph.add_node("ask", make_ask_node(pause=checkpointer is not None))
+    graph.add_edge("ask", "agent" if checkpointer is not None else END)
 
     graph.add_edge(START, "normalize")
     graph.add_edge("normalize", "agent")
-    graph.add_conditional_edges("agent", route, ["tools", "check"])
+    graph.add_conditional_edges("agent", route, ["tools", "ask", "check"])
     graph.add_edge("check", END)
     return graph.compile(checkpointer=checkpointer)

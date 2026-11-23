@@ -259,6 +259,7 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
               bubbleRef={i === turns.length - 1 ? latest : null}
               retryDisabled={pending}
               onRetry={() => onRetry(turn.id)}
+              onPick={i === turns.length - 1 && !pending ? onAsk : null}
             />
           ))}
           <div className="thread-end" />
@@ -275,7 +276,7 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
   );
 }
 
-function Turn({ turn, bubbleRef, retryDisabled, onRetry }) {
+function Turn({ turn, bubbleRef, retryDisabled, onRetry, onPick }) {
   return (
     <>
       <div className="user-bubble" ref={bubbleRef}>
@@ -303,7 +304,11 @@ function Turn({ turn, bubbleRef, retryDisabled, onRetry }) {
             <Logo size={30} />
             <span className="answer-name">AggieFlow</span>
           </div>
-          <AnswerText text={turn.answer} />
+          {turn.asked ? (
+            <Choices question={turn.asked} onPick={onPick} />
+          ) : (
+            <AnswerText text={turn.answer} />
+          )}
           {turn.grades.map((chart) => (
             <GradeChart key={chart.course} chart={chart} />
           ))}
@@ -311,6 +316,23 @@ function Turn({ turn, bubbleRef, retryDisabled, onRetry }) {
         </article>
       )}
     </>
+  );
+}
+
+/** The agent asked which one the student means. Only the latest question's options can be
+ * picked; typing a reply in the composer works too. */
+function Choices({ question, onPick }) {
+  return (
+    <div className="choices">
+      <p>{question.prompt}</p>
+      <div className="chips" role="group" aria-label={question.prompt}>
+        {question.options.map((option) => (
+          <button key={option} type="button" className="chip" disabled={!onPick} onClick={() => onPick(option)}>
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
