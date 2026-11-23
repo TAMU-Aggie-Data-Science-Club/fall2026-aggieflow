@@ -59,6 +59,16 @@ def test_not_sure_reference_tells_the_judge_to_expect_declining(fake):
     assert "NOT_SURE" not in model.prompts[0]
 
 
+def test_verdict_only_tells_the_judge_to_ignore_grade_numbers(fake):
+    model = fake("yes")
+    reference = {"answer": "Students love her. Her PHYS 206 sections average a 3.32 GPA (1,034 students)."}
+    answer = {"answer": "Students love Erukhimova; her sections average about 3.37."}
+    judges.correctness({"question": "is erukhimova good", "verdict_only": True}, answer, reference)
+    judges.correctness({"question": "is erukhimova good"}, answer, reference)
+    assert "ignore them completely" in model.prompts[0] and "same numbers" not in model.prompts[0]
+    assert "same numbers" in model.prompts[1] and "ignore them completely" not in model.prompts[1]
+
+
 def test_no_passages_skips_the_model(fake):
     model = fake("yes")
     q = {"question": "best dining hall"}

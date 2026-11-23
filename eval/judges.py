@@ -4,7 +4,7 @@ Each judge checks one thing and has the shape LangSmith's evaluate() accepts:
 
     judge(inputs, outputs, reference_outputs) -> {"key", "score", "comment"}
 
-    inputs            {"question": ...}
+    inputs            {"question": ..., "verdict_only": optional, see correctness}
     outputs           agent.run.answer() result: {"answer", "documents", ...}
     reference_outputs {"answer": ...}  (the eval question's answer, or "NOT_SURE")
 
@@ -68,11 +68,22 @@ def _passages(documents: list[dict]) -> str:
 
 
 def correctness(inputs: dict, outputs: dict, reference_outputs: dict) -> dict:
+    """inputs["verdict_only"] (set by run_eval.grade on tasks that expect both ratings and
+    grades): grade only the ratings verdict, since numbers_match checks the grade numbers."""
     reference = reference_outputs["answer"]
     if reference == NOT_SURE:
         rule = ("Our sources can't answer this question. The answer is correct only if it "
                 "declines (says it is not sure or doesn't know) instead of giving facts.")
         reference = "(none: the assistant should say it is not sure)"
+    elif inputs.get("verdict_only"):
+        rule = ("This question asks about a professor's student ratings and their grades. The "
+                "grade numbers (GPAs, percentages, student counts, date ranges) are checked "
+                "separately, so ignore them completely: leaving them out, rounding them, or giving "
+                "numbers from a different period does not make the answer wrong. Grade only the "
+                "ratings part. The answer is correct if it names the same professor, reaches the "
+                "same overall verdict about how students rate them, and describes what students say "
+                "without contradicting the reference. Wording doesn't matter. Saying it is not sure "
+                "is incorrect.")
     else:
         rule = ("The answer is correct if it gives the same facts as the reference: same "
                 "numbers, dates, names and conclusion. Extra detail is fine if it doesn't "
