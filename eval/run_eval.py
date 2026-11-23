@@ -340,9 +340,17 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     return results
 
 
+def judged_question(task: dict) -> str:
+    """The question as the judges see it: a multi-turn task's earlier turns come first, so a
+    follow-up like "what about summer?" makes sense to them."""
+    if not task.get("history"):
+        return task["question"]
+    turns = "\n".join(f"{'Student' if t['role'] == 'user' else 'AggieFlow'}: {t['content']}" for t in task["history"])
+    return f"Earlier in the conversation:\n{turns}\n\nThe student now asks: {task['question']}"
+
+
 def make_evaluator(judges, max_rounds: int, questions_by_id: dict):
     def evaluate_run(outputs: dict, reference_outputs: dict, example) -> dict:
-        # shortcut: judges see only the last question, not a multi-turn task's history; pass it if judge scores look off on follow-ups
         meta = {**example.metadata, "question": questions_by_id.get(example.metadata.get("id"), "")}
         reply = (example.inputs or {}).get("reply")
         if reply and outputs and outputs.get("asked"):  # the judge needs the reply to know which one
@@ -574,7 +582,7 @@ def main(argv=None) -> int:
     prefix = experiment_prefix(args.mode)
     results = client.evaluate(
         target, data=examples,
-        evaluators=[make_evaluator(judges, MAX_ROUNDS, {t["id"]: t["question"] for t in tasks})],
+        evaluators=[make_evaluator(judges, MAX_ROUNDS, {t["id"]: judged_question(t) for t in tasks})],
         num_repetitions=args.repetitions, experiment_prefix=prefix, max_concurrency=1,
         upload_results=not args.no_upload,
         metadata={"mode": args.mode, "repetitions": args.repetitions, "judges": [j.__name__ for j in judges]},

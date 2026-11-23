@@ -613,3 +613,13 @@ def test_bad_ask_fields_are_skipped(tmp_path, capsys, line, problem):
     (tmp_path / "ask-test.jsonl").write_text(json.dumps(q) + "\n", encoding="utf-8")
     assert score.load_questions(tmp_path / "ask-test.jsonl") == []
     assert problem in capsys.readouterr().err
+
+
+def test_judges_see_a_multi_turn_tasks_earlier_turns():
+    task = {"question": "what about summer?",
+            "history": [{"role": "user", "content": "q drop deadline in spring?"},
+                        {"role": "assistant", "content": "April 20, 2027."}]}
+    seen = run_eval.judged_question(task)
+    assert seen.index("Student: q drop deadline in spring?") < seen.index("AggieFlow: April 20, 2027.")
+    assert seen.endswith("The student now asks: what about summer?")
+    assert run_eval.judged_question({"question": "hi"}) == "hi"
