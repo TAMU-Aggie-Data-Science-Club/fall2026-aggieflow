@@ -135,7 +135,8 @@ def answer(question: str, graph=None, metadata: dict | None = None,
         "trace": [[tool calls], ...] round by round,
         "calls": [{"round", "name", "args", "error"}, ...] every tool call in order,
         "question": {"prompt", "options"} when the agent asked the student instead of
-                    answering (ask_user), else None. "answer" is then the question as text.
+                    answering (ask_user), with or without a thread, else None. "answer" is
+                    then the question as text; options are [] for an open question.
     }
     "documents" is what groundedness and retrieval-relevance judges read.
 
@@ -158,7 +159,7 @@ def answer(question: str, graph=None, metadata: dict | None = None,
     if state.get("__interrupt__"):  # paused on ask_user: the student's reply resumes it
         asked = state["__interrupt__"][0].value
         return {**result, "answer": question_text(asked), "sources": [], "question": asked}
-    return {**result, "answer": state["answer"], "sources": state["cited"]}
+    return {**result, "answer": state["answer"], "sources": state["cited"], "question": state.get("asked")}
 
 
 def _print(question: str, result: dict) -> None:

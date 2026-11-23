@@ -13,6 +13,9 @@
      not_sure_correct  a NOT_SURE task says "not sure" (links to related pages are fine)
      tool_match        it called tools only from the task's "tools" (and none if that's []).
                        Recorded, never fails a task: an extra tool call can still give a right answer.
+                       ask_user isn't a tool here; asked_right grades it.
+     asked_right       ask tasks only (#129): it asked (ask_user) exactly when "ask" says to, and
+                       with "options", each expected word is in one of the options it gave
      numbers_match     grade tasks only: every number the answer states matches the reference or
                        the passages it retrieved (GPA to 2 decimals, % within 1 point, counts within
                        1%), and it names the reference's first professor. Short answers pass;
@@ -25,10 +28,14 @@
    - run metrics, also never failing a task: latency_s (the attempt that succeeded, without
      rate-limit waits), fell_back (a vector or hybrid search fell back to keyword),
      wrongly_not_sure (an answerable task said "not sure"), answered_out_of_scope (a NOT_SURE
-     task answered anyway)
+     task answered anyway), over_asked / under_asked (asked when "ask" is false / didn't
+     when it's true)
    - passed: the run passes when every outcome grader that applies passes: cited_page or
      not_sure_correct, and numbers_match or correctness (both on tasks that expect grades
-     and ratings). A judge's "unknown" doesn't count.
+     and ratings), and asked_right on ask tasks. A judge's "unknown" doesn't count.
+
+An ask task with a "reply" runs in a thread: when the agent asks, the reply is sent as the
+student's answer, and the final answer is what cited_page, correctness and the rest grade.
 4. Prints pass@1 with a 95% CI (bootstrap over questions) and pass^k (passed all k runs) by
    source, set and tag, plus latency p50/p95, fallbacks and refusal errors.
 5. Writes one JSON line per run to --out (default eval/results/<experiment>.jsonl).
@@ -59,6 +66,7 @@ DATASET = "aggieflow-questions"
 MODES = ("keyword", "vector", "hybrid")
 GRADE_TOOLS = {"get_course_grades", "get_professor_grades"}
 NOT_SURE = score.NOT_SURE
+ASK = "ask_user"
 RESULTS = ROOT / "eval" / "results"
 BOOTSTRAP = 2000  # resamples for the 95% CIs
 
@@ -96,11 +104,13 @@ def is_search_task(task: dict) -> bool:
 def example_fields(task: dict) -> dict:
     return {
         # history only when set, so single-turn examples already in LangSmith stay unchanged
-        "inputs": {"question": task["question"], **({"history": task["history"]} if task.get("history") else {})},
+        "inputs": {"question": task["question"], **({"history": task["history"]} if task.get("history") else {}),
+                   **({"reply": task["reply"]} if task.get("reply") else {})},
         "outputs": {"answer": task["answer"], "source_url": task["source_url"],
                     "also_accept": task.get("also_accept") or []},
         "metadata": {"id": task["id"], "source": task["source"], "tools": task.get("tools"),
-                     "set": task.get("set"), "tags": task.get("tags", [])},
+                     "set": task.get("set"), "tags": task.get("tags", []),
+                     **{k: task[k] for k in ("ask", "options") if k in task}},
     }
 
 
@@ -226,6 +236,22 @@ def numbers_match(answer: str, reference: str, documents: list[dict] = ()) -> tu
     return 1, f"all {len(stated)} numbers check out{' and it names ' + first_professor if first_professor else ''}"
 
 
+def asked_right(meta: dict, asked: dict | None) -> tuple[int | None, str]:
+    """1 when the agent asked exactly when the task's "ask" says to, and, with "options",
+    each expected word is in one of the options it gave (case doesn't matter)."""
+    if "ask" not in meta:
+        return None, "not an ask task"
+    if not meta["ask"]:
+        return (0, f"asked {asked['prompt']!r}") if asked else (1, "answered without asking")
+    if not asked:
+        return 0, "answered without asking"
+    given = " | ".join(asked.get("options") or []).lower()
+    missing = [w for w in meta.get("options") or [] if w.lower() not in given]
+    if missing:
+        return 0, f"options {asked.get('options')} miss {missing}"
+    return 1, f"asked {asked['prompt']!r}"
+
+
 def is_grade_task(meta: dict) -> bool:
     return bool(GRADE_TOOLS & set(meta.get("tools") or []))
 
@@ -266,7 +292,8 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
     answer, expects_not_sure = outputs["answer"], reference["answer"] == NOT_SURE
     cited = {score.normalize_url(p["source_url"]) for p in outputs.get("sources", []) if p.get("source_url")}
     said_not_sure = "not sure" in answer.lower()
-    called = [c["name"] for c in outputs.get("calls", [])]
+    calls = [c for c in outputs.get("calls", []) if c["name"] != ASK]  # asking isn't a lookup
+    called = [c["name"] for c in calls]
     expected = meta.get("tools")
     grade_task = is_grade_task(meta) and not expects_not_sure
     judged = not grade_task or needs_judge(meta)
@@ -282,6 +309,7 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
          f"called {called}, expected {expected}"),
         "numbers_match": numbers_match(answer, reference["answer"], outputs.get("documents", [])) if grade_task else
         (None, "not a grade task"),
+        "asked_right": asked_right(meta, outputs.get("asked")),
     }
     # On a grade task that also expects ratings, numbers_match checks the grades, so the judge
     # grades only the ratings verdict (judges.correctness reads verdict_only).
@@ -293,16 +321,19 @@ def grade(meta: dict, reference: dict, outputs: dict | None, judges=None, max_ro
             continue
         r = with_retry(judge, inputs, outputs, reference)
         results[name] = (r["score"], r.get("comment", ""))
-    for key, value in path_metrics(outputs.get("calls", []), meta.get("tags") or [], max_rounds).items():
+    for key, value in path_metrics(calls, meta.get("tags") or [], max_rounds).items():
         results[key] = (value, "")
     results["latency_s"] = (outputs.get("latency_s"), "seconds, without rate-limit waits")
     results["fell_back"] = (outputs.get("fell_back"), "a search fell back to keyword")
     results["wrongly_not_sure"] = (None, "NOT_SURE task") if expects_not_sure else (int(said_not_sure), "")
     results["answered_out_of_scope"] = ((int(not said_not_sure), "") if expects_not_sure else
                                         (None, "answerable task"))
+    asked = bool(outputs.get("asked"))
+    results["over_asked"] = (int(asked), "") if meta.get("ask") is False else (None, "not an ask: false task")
+    results["under_asked"] = (int(not asked), "") if meta.get("ask") is True else (None, "not an ask: true task")
 
     gates = ["not_sure_correct" if expects_not_sure else "cited_page"]
-    gates += ["numbers_match"] * grade_task + ["correctness"] * judged  # tool_match grades the path, so it's only recorded
+    gates += ["numbers_match"] * grade_task + ["correctness"] * judged + ["asked_right"]  # tool_match grades the path, so it's only recorded
     scores = {g: results[g][0] for g in gates if g in results and results[g][0] is not None}
     failed = [g for g, s in scores.items() if s != 1]
     results["passed"] = (int(not failed), f"failed {failed}" if failed else f"passed {sorted(scores)}")
@@ -313,6 +344,9 @@ def make_evaluator(judges, max_rounds: int, questions_by_id: dict):
     def evaluate_run(outputs: dict, reference_outputs: dict, example) -> dict:
         # shortcut: judges see only the last question, not a multi-turn task's history; pass it if judge scores look off on follow-ups
         meta = {**example.metadata, "question": questions_by_id.get(example.metadata.get("id"), "")}
+        reply = (example.inputs or {}).get("reply")
+        if reply and outputs and outputs.get("asked"):  # the judge needs the reply to know which one
+            meta["question"] += f"\n(AggieFlow asked {outputs['asked']['prompt']!r}; the student answered {reply!r})"
         graded = grade(meta, reference_outputs, outputs, judges, max_rounds)
         return {"results": [{"key": k, "score": s, "comment": c} for k, (s, c) in graded.items()]}
     return evaluate_run
@@ -405,9 +439,12 @@ def print_summary(summary: dict) -> None:
     if fallbacks and summary["modes"] - {"keyword"}:
         print("  WARNING: a vector or hybrid experiment with fallbacks isn't valid for comparing search modes")
     for key, label, kind in (("wrongly_not_sure", "false refusals", "answerable"),
-                             ("answered_out_of_scope", "false answers", "NOT_SURE")):
+                             ("answered_out_of_scope", "false answers", "NOT_SURE"),
+                             ("over_asked", "over-asking", "ask: false"),
+                             ("under_asked", "under-asking", "ask: true")):
         runs = values.get(key, [])
-        print(f"{label} ({key}): {int(sum(runs))} of {len(runs)} {kind} runs")
+        if runs or key in ("wrongly_not_sure", "answered_out_of_scope"):
+            print(f"{label} ({key}): {int(sum(runs))} of {len(runs)} {kind} runs")
 
 
 # --- main -------------------------------------------------------------------------
@@ -419,28 +456,39 @@ def experiment_prefix(mode: str) -> str:
     return f"agent-{mode}-{commit.split()[0]}{'-dirty' if '+' in commit else ''}"
 
 
-def task_key(question: str, history: list | None) -> str:
-    """Two multi-turn tasks can end on the same question ("what about summer?")."""
-    return json.dumps([history or [], question])
+def task_key(question: str, history: list | None, reply: str | None = None) -> str:
+    """Two multi-turn tasks can end on the same question ("what about summer?"), and two ask
+    tasks can share a question with different replies."""
+    return json.dumps([history or [], question] + ([reply] if reply else []))
 
 
-def measured(answer, data, question: str, question_id: str, clock=None, history=None) -> dict:
+def measured(answer, data, question: str, question_id: str, clock=None, history=None, reply=None) -> dict:
     """One attempt at answer(), plus latency_s and fell_back for that attempt alone. with_retry
-    calls this once per attempt, so neither counts time or searches from attempts that failed."""
+    calls this once per attempt, so neither counts time or searches from attempts that failed.
+
+    "asked" is the question the agent asked the student, or None. With a reply, the attempt
+    runs in its own thread and, if the agent asks, the reply resumes it; the result is then
+    the final answer, and latency covers both calls."""
     import time
 
     clock = clock or time.perf_counter
+    metadata = {"question_id": question_id}
+    thread = {"thread_id": f"eval-{uuid.uuid4()}"} if reply else {}
     before, start = data.fallback_count, clock()
-    result = answer(question, metadata={"question_id": question_id}, history=history)
-    return {**result, "latency_s": round(clock() - start, 3), "fell_back": int(data.fallback_count > before)}
+    result = answer(question, metadata=metadata, history=history, **thread)
+    asked = result.get("question")
+    if asked and reply:
+        result = answer(reply, metadata=metadata, **thread)
+    return {**result, "asked": asked, "latency_s": round(clock() - start, 3),
+            "fell_back": int(data.fallback_count > before)}
 
 
-def answer_fn(question: str, question_id: str, history: list | None = None) -> dict:
+def answer_fn(question: str, question_id: str, history: list | None = None, reply: str | None = None) -> dict:
     """The real agent, retrying rate limits. Tests replace this."""
     from agent import data
     from agent.run import answer
 
-    return with_retry(measured, answer, data, question, question_id, history=history)
+    return with_retry(measured, answer, data, question, question_id, history=history, reply=reply)
 
 
 def run_info(mode: str, experiment: str) -> dict:
@@ -476,6 +524,7 @@ def main(argv=None) -> int:
 
     load_dotenv(ROOT / ".env")
     os.environ["AGGIEFLOW_SEARCH"] = args.mode
+    os.environ["AGGIEFLOW_CHECKPOINTS"] = "memory"  # ask tasks' threads; members' Atlas user is read-only
     from agent.graph import MAX_ROUNDS
     from langsmith import Client
 
@@ -493,7 +542,7 @@ def main(argv=None) -> int:
         print(f"No tasks found at {args.questions}", file=sys.stderr)
         return 1
     print(score.run_setup())
-    ids = {task_key(t["question"], t.get("history")): t["id"] for t in tasks}
+    ids = {task_key(t["question"], t.get("history"), t.get("reply")): t["id"] for t in tasks}
     judges = []
     if not args.no_judges:
         from judges import JUDGES
@@ -509,8 +558,11 @@ def main(argv=None) -> int:
             judges = [by_name[n] for n in names]
 
     def target(inputs: dict) -> dict:
-        history = inputs.get("history")
-        return answer_fn(inputs["question"], ids.get(task_key(inputs["question"], history), ""), history)
+        history, reply = inputs.get("history"), inputs.get("reply")
+        question_id = ids.get(task_key(inputs["question"], history, reply), "")
+        if reply:
+            return answer_fn(inputs["question"], question_id, history, reply)
+        return answer_fn(inputs["question"], question_id, history)
 
     if args.no_upload:
         os.environ["LANGSMITH_TRACING"] = "false"  # send nothing, even if .env turns tracing on

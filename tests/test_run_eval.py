@@ -330,7 +330,7 @@ def test_measured_times_only_the_attempt_that_succeeded():
 
     result = run_eval.with_retry(run_eval.measured, answer, Data, "q", "sr-01",
                                  clock=lambda: next(ticks), sleep=lambda s: None)
-    assert result == {"answer": "Four.", "latency_s": 4.5, "fell_back": 1}
+    assert result == {"answer": "Four.", "asked": None, "latency_s": 4.5, "fell_back": 1}
     assert attempts[-1] == {"question_id": "sr-01"}
 
 
@@ -524,3 +524,92 @@ def test_history_is_an_input_only_when_set():
     assert run_eval.example_fields({**task, "history": history})["inputs"]["history"] == history
     # the same follow-up after different conversations is two tasks
     assert run_eval.task_key(task["question"], history) != run_eval.task_key(task["question"], None)
+
+
+# --- ask tasks (#129) ---------------------------------------------------------------
+
+LEYK_Q = {"prompt": "Which Professor Leyk?", "options": ["Teresa Leyk (CSCE)", "Zbigniew Leyk (MATH)"]}
+
+
+def ask_meta(ask, **extra):
+    return {"tools": ["get_professor_ratings"], "ask": ask, **extra}
+
+
+@pytest.mark.parametrize("meta, asked, expected", [
+    (ask_meta(True, options=["teresa", "Zbigniew"]), LEYK_Q, 1),
+    (ask_meta(True, options=["Teresa", "Kim"]), LEYK_Q, 0),       # an expected option is missing
+    (ask_meta(True), {"prompt": "Which minor?", "options": []}, 1),  # open question
+    (ask_meta(True), None, 0),                                     # under-asked
+    (ask_meta(False), LEYK_Q, 0),                                  # over-asked
+    (ask_meta(False), None, 1),
+    ({"tools": []}, LEYK_Q, None),                                 # not an ask task
+])
+def test_asked_right(meta, asked, expected):
+    assert run_eval.asked_right(meta, asked)[0] == expected
+
+
+def test_ask_tasks_gate_on_asked_right_and_count_over_and_under_asking():
+    reference = {"answer": "Students like her.", "source_url": "https://www.ratemyprofessors.com/professor/1"}
+    rated = passage(reference["source_url"])
+    outputs = {"answer": "Students like Teresa Leyk.", "sources": [rated], "documents": [rated],
+               "calls": [call("get_professor_ratings", professor="leyk"), call("ask_user", round_=2, **LEYK_Q),
+                         call("get_professor_ratings", round_=3, professor="teresa leyk")]}
+    asked = run_eval.grade(ask_meta(True), reference, {**outputs, "asked": LEYK_Q}, YES_JUDGES)
+    assert asked["passed"][0] == 1 and asked["under_asked"][0] == 0 and asked["over_asked"][0] is None
+    assert asked["tool_match"][0] == 1 and asked["tool_call_count"][0] == 2  # ask_user isn't a lookup
+
+    guessed = run_eval.grade(ask_meta(True), reference, {**outputs, "asked": None}, YES_JUDGES)
+    assert guessed["passed"][0] == 0 and guessed["under_asked"][0] == 1
+
+    over = run_eval.grade(ask_meta(False), reference, {**outputs, "asked": LEYK_Q}, YES_JUDGES)
+    assert over["passed"][0] == 0 and over["over_asked"][0] == 1
+    plain = run_eval.grade({"tools": ["get_professor_ratings"]}, reference, outputs, YES_JUDGES)
+    assert plain["asked_right"][0] is None and plain["passed"][0] == 1
+
+
+def test_a_reply_resumes_the_same_thread():
+    class Data:
+        fallback_count = 0
+
+    seen = []
+
+    def answer(question, metadata, history=None, thread_id=None):
+        seen.append((question, thread_id))
+        if len(seen) == 1:
+            return {"answer": "Which Professor Leyk?", "question": LEYK_Q}
+        return {"answer": "Students like Teresa Leyk.", "question": None}
+
+    result = run_eval.measured(answer, Data, "is leyk good", "ask-01", reply="Teresa Leyk (CSCE)")
+    assert result["answer"] == "Students like Teresa Leyk." and result["asked"] == LEYK_Q
+    assert seen[1][0] == "Teresa Leyk (CSCE)" and seen[0][1] == seen[1][1] and seen[0][1].startswith("eval-")
+
+    seen.clear()
+    answer_only = lambda q, metadata, history=None, thread_id=None: seen.append(q) or {"answer": "x", "question": None}
+    result = run_eval.measured(answer_only, Data, "when is the last day to drop", "ask-02", reply="fall")
+    assert seen == ["when is the last day to drop"] and result["asked"] is None  # didn't ask: no reply sent
+
+
+def test_ask_fields_go_to_langsmith_only_when_set():
+    task = {"id": "ask-01", "source": "ask", "question": "is leyk good", "answer": "a", "source_url": "u",
+            "ask": True, "options": ["Teresa"], "reply": "Teresa Leyk"}
+    fields = run_eval.example_fields(task)
+    assert fields["inputs"]["reply"] == "Teresa Leyk"
+    assert fields["metadata"]["ask"] is True and fields["metadata"]["options"] == ["Teresa"]
+    plain = run_eval.example_fields({k: v for k, v in task.items() if k not in ("ask", "options", "reply")})
+    assert "reply" not in plain["inputs"] and "ask" not in plain["metadata"]
+    assert run_eval.task_key("is leyk good", None, "Teresa") != run_eval.task_key("is leyk good", None, "Zbigniew")
+
+
+@pytest.mark.parametrize("line, problem", [
+    ({"ask": "yes"}, "ask must be true or false"),
+    ({"ask": True}, "needs a reply"),
+    ({"reply": "Teresa"}, "need ask: true"),
+    ({"ask": False, "options": ["a"]}, "need ask: true"),
+])
+def test_bad_ask_fields_are_skipped(tmp_path, capsys, line, problem):
+    import score
+
+    q = {"id": "ask-01", "question": "q", "answer": "a", "source_url": "u", "tools": [], **line}
+    (tmp_path / "ask-test.jsonl").write_text(json.dumps(q) + "\n", encoding="utf-8")
+    assert score.load_questions(tmp_path / "ask-test.jsonl") == []
+    assert problem in capsys.readouterr().err

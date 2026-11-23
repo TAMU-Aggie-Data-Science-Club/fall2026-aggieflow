@@ -42,9 +42,12 @@ Greetings, thanks and "what can you do" need no tools. Anything else you can't
 look up, including requests to write or do something for the student, gets "not sure".
 Earlier messages are the conversation so far. Use them to understand
 follow-ups like "what about summer?", but look facts up again with your tools.
-If several things match and the conversation doesn't say which one
-(for example, two professors named Kim), call ask_user with the choices from
-the tool results instead of guessing. Look things up before asking.
+When the answer depends on something the student didn't say and you can't
+briefly cover every case, call ask_user instead of guessing: two professors named
+Kim, "the minor" without saying which, a rule that differs for undergrad and grad
+students when the answer would be long. Look things up first when that shows the
+choices. If a short answer can cover every case (each semester's deadline, on- and
+off-campus parking), give it and don't ask.
 For choosing or judging a professor, use both grades (anex.us) and ratings
 (RateMyProfessors). Questions only about grades (grade distribution, average GPA,
 percent A's, Q-drops) need grades only. Give both sides when they disagree, and say ratings
@@ -100,17 +103,20 @@ def normalize(state: State) -> dict:
     earlier = [RemoveMessage(id=m.id) for m in old if m.id not in keep]
     if not old:
         earlier = history_messages(state.get("history") or [])
-    return {"messages": [*earlier, HumanMessage(state["question"])], "rounds": 0, "sources": None}
+    return {"messages": [*earlier, HumanMessage(state["question"])], "rounds": 0, "sources": None,
+            "asked": None}
 
 
 class ask_user(BaseModel):
     """Ask the student one short question when the answer depends on something they
-    didn't say and the tool results show the choices: for example, which of several
-    professors with the same name. The student picks an option or types a reply."""
+    didn't say and the cases can't all be covered briefly: which of several professors
+    with the same name, which minor, undergrad or grad rules. Don't ask when a short
+    answer covers every case. The student picks an option or types a reply."""
 
-    prompt: str = Field(description="The question, like 'Which Professor Leyk?'")
-    options: list[str] = Field(description="2 to 6 short choices from the tool results, "
-                               "like 'Teresa Leyk (Computer Science)'")
+    prompt: str = Field(description="The question, like 'Which Professor Leyk?' or 'Which minor?'")
+    options: list[str] = Field(default_factory=list,
+                               description="2 to 6 short choices, like 'Teresa Leyk (Computer Science)'. "
+                               "Leave empty for an open question like 'Which minor?'")
 
 
 ASK = "ask_user"
@@ -217,7 +223,7 @@ def make_ask_node(pause: bool):
         question = question_of(calls[0])
         if not pause:
             text = question_text(question)
-            return {"messages": [AIMessage(text)], "answer": text, "cited": []}
+            return {"messages": [AIMessage(text)], "answer": text, "cited": [], "asked": question}
         reply = interrupt(question)
         return {"messages": [ToolMessage(f"The student answered: {reply}" if i == 0 else NOT_ASKED,
                                          tool_call_id=c["id"], name=ASK)

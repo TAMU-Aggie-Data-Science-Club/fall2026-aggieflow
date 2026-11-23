@@ -16,6 +16,9 @@ Each file in `eval/questions/` holds test tasks, one JSON object per line. `eval
 | `set` | no | `regression` (should always pass) or `capability` (hard) | `"capability"` |
 | `tags` | no | Labels for slicing results | `["paraphrase"]` |
 | `history` | no | Earlier turns of a conversation, oldest first. `question` is the follow-up being graded. | `[{"role": "user", "content": "when's q drop"}, {"role": "assistant", "content": "..."}]` |
+| `ask` | no | `true`: the agent should ask which one the student means (`ask_user`). `false`: it should answer without asking. | `true` |
+| `options` | no | With `ask: true`, words each expected option should contain. Leave out for an open question ("which minor?"). | `["Teresa", "Zbigniew"]` |
+| `reply` | with `ask: true` | What the student says back. The runner sends it in the same thread, and `answer`, `source_url` and `tools` grade the final answer. | `"Teresa Leyk"` |
 
 When a line has no `tools`, the scorer picks a default from the file name:
 
@@ -30,6 +33,8 @@ When a line has no `tools`, the scorer picks a default from the file name:
 | `ratemyprofessors` | `get_professor_ratings` |
 
 Files with any other prefix, like `extra-<name>.jsonl`, set `tools` on every line.
+
+**Ask tasks** (`ask-<name>.jsonl`, #129) test *when* the agent asks. The `asked_right` grader passes when it asked exactly when `ask` says to, and `run_eval.py` prints over-asking (asked when `ask` is `false`) and under-asking (didn't ask when it's `true`) next to the false refusals. About half of a file should be `ask: false`: questions where a short answer covers every case.
 
 **Tags:**
 - `no-tool`: the agent shouldn't call a tool.

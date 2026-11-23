@@ -392,7 +392,19 @@ def test_after_an_asked_turn_the_thread_keeps_only_the_question_and_answer():
 def test_without_a_thread_the_question_is_the_answer():
     result = answer("is professor leyk good", graph=build_graph(ScriptedModel([asks()])))
     assert result["answer"] == "Which Professor Leyk?\n- Teresa Leyk (Computer Science)\n- Zbigniew Leyk (Engineering)"
-    assert result["sources"] == []
+    assert result["sources"] == [] and result["question"] == LEYK  # evals can see that it asked
+
+
+def test_an_open_question_has_no_options():
+    open_question = AIMessage("", tool_calls=[call("ask_user", {"prompt": "Which minor?"}, "a1")])
+    result = answer("what are the requirements for the minor", graph=build_graph(ScriptedModel([open_question])))
+    assert result["question"] == {"prompt": "Which minor?", "options": []}
+    assert result["answer"] == "Which minor?"
+
+
+def test_an_answer_reports_no_question():
+    model = ScriptedModel([AIMessage("Hi! Ask me about A&M.")])
+    assert answer("hi", graph=build_graph(model))["question"] is None
 
 
 def test_ask_user_with_other_tools_runs_the_tools_and_skips_the_question():
