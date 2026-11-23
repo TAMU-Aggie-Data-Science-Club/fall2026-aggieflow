@@ -98,10 +98,18 @@ def chat(request: request):
 
         tools = list(dict.fromkeys([call["name"] for call in result["calls"]]))
 
+        #every lookup in order, for the UI's tool steps (ask_user is shown as the question instead)
+        steps = [
+            {"name": call["name"], "args": call["args"], "error": call["error"]}
+            for call in result["calls"]
+            if call["name"] != "ask_user"
+        ]
+
         return {
             "answer": answer_text,
             "sources": sources,
             "tools": tools,
+            "steps": steps,
             "grades": grade_charts(result["calls"]),
             "thread_id": thread_id,
             #set when the agent asks which one the student means: {prompt, options}; reply with the same thread_id

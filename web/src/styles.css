@@ -336,6 +336,8 @@ button {
 .conversation {
   flex: 1;
   min-width: 0;
+  height: 100vh;
+  height: 100dvh; /* the thread scrolls inside, so the composer stays put */
   display: flex;
   flex-direction: column;
 }
@@ -354,22 +356,19 @@ button {
 
 .thread {
   flex: 1;
-  display: flex;
-  justify-content: center;
-  padding: 40px 24px 24px;
+  min-height: 0;
 }
 .thread-inner {
   width: 100%;
-  max-width: 780px;
+  max-width: 828px; /* 780px of text plus padding */
+  margin: 0 auto;
+  padding: 40px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 28px;
 }
 
 .user-bubble {
-  scroll-margin-top: 24px;
-  align-self: flex-end;
-  max-width: 80%;
   background: var(--maroon-tint);
   border-radius: 18px 18px 4px 18px;
   padding: 12px 16px;
@@ -380,10 +379,6 @@ button {
 }
 
 /* Room below the last turn, so the newest question can scroll to the top. */
-.thread-end {
-  min-height: 40vh;
-}
-
 .answer {
   display: flex;
   flex-direction: column;
@@ -616,50 +611,51 @@ button {
   }
 }
 
-.sources {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.sources-label {
+/* Sources (AI Elements): a "Used N sources" toggle over a numbered list of links */
+.sources > button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  font: inherit;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
+  cursor: pointer;
 }
-.source-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
+.sources > button:hover {
+  color: var(--maroon);
 }
-.source {
+.sources-chevron {
+  transition: transform 0.15s;
+}
+.sources[data-state="open"] .sources-chevron {
+  transform: rotate(180deg);
+}
+.source-link {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px 6px 0;
+  border-radius: 8px;
   text-decoration: none;
   color: var(--ink);
   min-width: 0;
 }
-.source:hover {
-  border-color: var(--maroon);
-  color: var(--ink);
+.source-link:hover .source-title {
+  color: var(--maroon);
+  text-decoration: underline;
 }
 .source-site {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 .source-n {
   flex: none;
+  align-self: center;
   width: 20px;
   height: 20px;
   border-radius: 6px;
@@ -672,48 +668,60 @@ button {
   justify-content: center;
 }
 .source-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
 }
 
-.thinking {
+/* Tool steps (AI Elements): one expandable row per lookup the agent ran */
+.steps {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
+}
+.step {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.step > button {
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 14px;
+}
+.step > button span {
+  overflow-wrap: anywhere;
+}
+.step-content {
+  padding: 0 14px 12px;
+}
+.step-content dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.step-content dl > div {
+  display: flex;
+  gap: 8px;
+}
+.step-content dt {
+  color: var(--muted);
+}
+.step-content dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.thinking {
   font-size: 14px;
   color: var(--muted);
 }
-.thinking .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--maroon);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-.thinking .dot:nth-child(2) {
-  animation-delay: 0.15s;
-}
-.thinking .dot:nth-child(3) {
-  animation-delay: 0.3s;
-  margin-right: 4px;
-}
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .thinking .dot {
-    animation: none;
-    opacity: 0.6;
-  }
-}
-
 .error-turn {
   display: flex;
   align-items: center;
@@ -769,6 +777,11 @@ button {
 @media (max-width: 760px) {
   .app {
     flex-direction: column;
+    height: 100dvh;
+  }
+  .conversation {
+    height: auto;
+    min-height: 0;
   }
   .sidebar {
     width: auto;

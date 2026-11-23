@@ -42,6 +42,7 @@ def test_chat(client, monkeypatch):
         "answer": f"Four ({URL}).",
         "sources": [{"title": "Rule 1", "source_url": URL, "source": "student-rules"}],
         "tools": ["search_student_rules"],
+        "steps": [{"name": "search_student_rules", "args": {}, "error": None}] * 2,
         "grades": [],
         "question": None,
     }

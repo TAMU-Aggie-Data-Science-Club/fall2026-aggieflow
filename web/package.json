@@ -9,8 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.77.0",
+    "motion": "^14.14.0",
+    "radix-ui": "^1.8.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "streamdown": "^2.8.0",
+    "tailwind-merge": "^3.7.1",
+    "tailwindcss": "^4.3.5",
+    "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",

@@ -1,7 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import {
+  Conversation as ConversationLog,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
 import { askAgent } from "./api.js";
-import AnswerText from "./AnswerText.jsx";
 import GradeChart from "./GradeChart.jsx";
+
+// Our chips wrap onto new lines instead of AI Elements' default single scrolling row.
+const SUGGESTIONS_WRAP = "w-full flex-wrap";
+const SUGGESTION_CHIP = "chip h-auto whitespace-normal";
+// Links open straight in a new tab (no "leave site?" modal), and tables get no toolbar.
+const PLAIN_MARKDOWN = { linkSafety: { enabled: false }, controls: false };
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const TRY_ASKING = [
   "Who should I take for MATH 151?",
@@ -195,13 +211,11 @@ function Home({ onAsk }) {
 
         <section aria-label="Try a question" className="try">
           <div className="try-label">Try asking</div>
-          <div className="chips">
+          <Suggestions className={SUGGESTIONS_WRAP}>
             {TRY_ASKING.map((q) => (
-              <button key={q} type="button" className="chip" onClick={() => onAsk(q)}>
-                {q}
-              </button>
+              <Suggestion key={q} suggestion={q} className={SUGGESTION_CHIP} onClick={onAsk} />
             ))}
-          </div>
+          </Suggestions>
         </section>
 
         <p className="disclaimer">{DISCLAIMER}</p>
@@ -235,36 +249,26 @@ function FeatureIcon({ name }) {
 }
 
 function Conversation({ turns, pending, onAsk, onRetry }) {
-  const latest = useRef(null);
-  const last = turns[turns.length - 1];
-
-  // Bring the newest question to the top, so its answer reads from the first line.
-  useEffect(() => {
-    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    latest.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
-  }, [turns.length, last.status]);
-
   return (
     <main className="conversation">
       <header className="conversation-header">
         <h1>{turns[0].question}</h1>
       </header>
 
-      <div className="thread">
-        <div className="thread-inner">
+      <ConversationLog className="thread">
+        <ConversationContent className="thread-inner">
           {turns.map((turn, i) => (
             <Turn
               key={turn.id}
               turn={turn}
-              bubbleRef={i === turns.length - 1 ? latest : null}
               retryDisabled={pending}
               onRetry={() => onRetry(turn.id)}
               onPick={i === turns.length - 1 && !pending ? onAsk : null}
             />
           ))}
-          <div className="thread-end" />
-        </div>
-      </div>
+        </ConversationContent>
+        <ConversationScrollButton aria-label="Scroll to the newest answer" />
+      </ConversationLog>
 
       <div className="composer-dock">
         <div className="composer-dock-inner">
@@ -276,18 +280,15 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
   );
 }
 
-function Turn({ turn, bubbleRef, retryDisabled, onRetry, onPick }) {
+function Turn({ turn, retryDisabled, onRetry, onPick }) {
   return (
     <>
-      <div className="user-bubble" ref={bubbleRef}>
-        {turn.question}
-      </div>
+      <Message from="user" className="max-w-[80%] self-end">
+        <MessageContent className="user-bubble">{turn.question}</MessageContent>
+      </Message>
       {turn.status === "pending" && (
         <div className="thinking" role="status" aria-live="polite">
-          <span className="dot" />
-          <span className="dot" />
-          <span className="dot" />
-          Thinking…
+          {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">Thinking…</Shimmer>}
         </div>
       )}
       {turn.status === "error" && (
@@ -299,21 +300,24 @@ function Turn({ turn, bubbleRef, retryDisabled, onRetry, onPick }) {
         </div>
       )}
       {turn.status === "done" && (
-        <article className="answer" aria-label="AggieFlow answer">
+        <Message from="assistant" className="answer max-w-full" aria-label="AggieFlow answer">
           <div className="answer-head">
             <Logo size={30} />
             <span className="answer-name">AggieFlow</span>
           </div>
+          {turn.steps.length > 0 && <Steps steps={turn.steps} />}
           {turn.asked ? (
             <Choices question={turn.asked} onPick={onPick} />
           ) : (
-            <AnswerText text={turn.answer} />
+            <MessageContent className="answer-text">
+              <MessageResponse {...PLAIN_MARKDOWN}>{turn.answer}</MessageResponse>
+            </MessageContent>
           )}
           {turn.grades.map((chart) => (
             <GradeChart key={chart.course} chart={chart} />
           ))}
           {turn.sources.length > 0 && <Sources sources={turn.sources} />}
-        </article>
+        </Message>
       )}
     </>
   );
@@ -325,13 +329,11 @@ function Choices({ question, onPick }) {
   return (
     <div className="choices">
       <p>{question.prompt}</p>
-      <div className="chips" role="group" aria-label={question.prompt}>
+      <Suggestions className={SUGGESTIONS_WRAP} role="group" aria-label={question.prompt}>
         {question.options.map((option) => (
-          <button key={option} type="button" className="chip" disabled={!onPick} onClick={() => onPick(option)}>
-            {option}
-          </button>
+          <Suggestion key={option} suggestion={option} className={SUGGESTION_CHIP} disabled={!onPick} onClick={onPick} />
         ))}
-      </div>
+      </Suggestions>
     </div>
   );
 }
@@ -345,26 +347,80 @@ function siteOf(url) {
 }
 
 function Sources({ sources }) {
+  const count = sources.length;
   return (
-    <section aria-label="Sources" className="sources">
-      <div className="sources-label">
-        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z" />
-          <path d="M4 21V5" />
-        </svg>
-        Sources
-      </div>
-      <div className="source-grid">
+    <SourcesList className="sources">
+      <SourcesTrigger count={count}>
+        <span className="sources-trigger">Used {count} {count === 1 ? "source" : "sources"}</span>
+        <ChevronDown />
+      </SourcesTrigger>
+      <SourcesContent>
         {sources.map((s, i) => (
-          <a key={s.source_url} className="source" href={s.source_url} target="_blank" rel="noopener noreferrer">
-            <span className="source-site">
-              <span className="source-n">{i + 1}</span>
-              {siteOf(s.source_url)}
-            </span>
+          <Source key={s.source_url} href={s.source_url} className="source-link">
+            <span className="source-n">{i + 1}</span>
             <span className="source-title">{s.title}</span>
-          </a>
+            <span className="source-site">{siteOf(s.source_url)}</span>
+          </Source>
         ))}
-      </div>
-    </section>
+      </SourcesContent>
+    </SourcesList>
+  );
+}
+
+function ChevronDown() {
+  return (
+    <svg aria-hidden="true" className="sources-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+// What each agent tool looks up, in words a student knows.
+const TOOL_LABELS = {
+  get_course: "Course info",
+  get_course_grades: "Grade history",
+  get_professor_grades: "Professor's grades",
+  get_professor_ratings: "Professor ratings",
+  search_student_rules: "Student Rules",
+  search_registrar: "Registrar",
+  search_tech_help: "Tech help",
+  search_degree_plans: "Degree plans",
+  search_transportation: "Transportation",
+};
+
+const ARG_LABELS = { course: "Course", professor: "Professor", query: "Searched for" };
+
+/** The lookups the agent ran for this answer, each one expandable to show what it asked. */
+function Steps({ steps }) {
+  return (
+    <div className="steps">
+      {steps.map((step, i) => {
+        const args = Object.entries(step.args ?? {}).filter(([, v]) => v != null && v !== "");
+        const main = args[0]?.[1];
+        const label = TOOL_LABELS[step.name] ?? step.name.replaceAll("_", " ");
+        return (
+          <Tool key={i} className="step">
+            <ToolHeader
+              type="dynamic-tool"
+              toolName={step.name}
+              title={main ? `${label}: ${main}` : label}
+              state={step.error ? "output-error" : "output-available"}
+            />
+            {args.length > 0 && (
+              <ToolContent className="step-content">
+                <dl>
+                  {args.map(([k, v]) => (
+                    <div key={k}>
+                      <dt>{ARG_LABELS[k] ?? k}</dt>
+                      <dd>{String(v)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </ToolContent>
+            )}
+          </Tool>
+        );
+      })}
+    </div>
   );
 }
