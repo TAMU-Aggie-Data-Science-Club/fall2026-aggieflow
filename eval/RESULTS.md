@@ -1,6 +1,6 @@
 # Agent results (#89)
 
-**Current numbers are in the [Release run](#release-run-74): every question, on one commit.** The 40-question sample below came first and ran on an older commit.
+**Current numbers are in the [Final run](#final-run-after-139): every question, after the fixes from the release run.** The [Release run](#release-run-74) is the baseline it's compared against. The 40-question sample below came first and ran on an older commit.
 
 ```
 setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), keyword search; commit c16110e; LangSmith tracing on
@@ -21,6 +21,45 @@ Runs are named `agent-<mode>-<commit>-<id>` and renamed in LangSmith afterward t
 ```
 uv run python eval/run_eval.py --ids eval/sample-40.txt --judges correctness --repetitions 1
 ```
+
+## Final run (after #139)
+
+```
+setup: google_genai:gemini-3.5-flash-lite at temperature 0; Atlas (aggieflow), hybrid search; commit ae6f39a; LangSmith tracing off
+```
+
+Every question once on `ae6f39a`. That's the agent after #139 (fixes for #135, #136, #137) and the questions after the release run's 12 fixes. It ran with the same part files and `correctness` judge as the release run. Result files: `eval/results/release-final-part*.jsonl`.
+
+| | Release run (`8d659b9`) | **Final run (`ae6f39a`)** |
+|---|---|---|
+| **pass@1** | 83% (148 of 179) | **90.5% (162 of 179)**, 95% CI [86%, 94%] |
+| `cited_page` / `correctness` | 88% / 87% | 96% / 92% |
+| Answered a `NOT_SURE` question | 3 of 18 | **0 of 18** |
+| Said "not sure" on an answerable question | 2 of 160 | 1 of 161 |
+| Over-asking / under-asking | 1 of 10 / 0 of 6 | 0 of 10 / 0 of 6 |
+| Latency p50 / p95 | 2.8 s / 5.8 s | 2.9 s / 5.6 s |
+
+`compare.py` (paired by question): **+8 points, 95% CI [+2, +13]**. 21 questions went from fail to pass, and 7 went from pass to fail.
+
+**pass@1 by file:** anex, multi-turn, RateMyProfessors and Registrar 100%, Student Rules 93%, ask 88%, extra 86%, Transportation 80%, OAL 75%, catalog 70%.
+
+### The 17 failures
+
+**New since the release run (7).** One diagnostic run each; the two that looked real were run 3 more times:
+- `extra-krishjayanth-20` ("i want to go from bio to engineering"), **3 of 3 more runs failed**: searches the Registrar and says "not sure". #139 rewrote the Student Rules tool description as a topic list without changing majors (Rule 5). Tool choice; a regression from #139.
+- `ask-aguw0kie124-03` ("how is dr kim"), **3 of 3 more runs failed**: asks "Which Dr. Kim?" right away, without looking anything up, with made-up options (once, names that aren't in any results). Conversation; it passed all 3 release runs.
+- `extra-krishjayanth-26` (reading day before May finals): says yes but leaves out the date. Answer.
+- `ask-aguw0kie124-10`, `catalog-aguw0kie124-02`, `extra-krishjayanth-13`, `-29`: passed the diagnostic run (flaky).
+
+**Failed in both runs (10):**
+- `student-rules-rushilsagar-10` (parking permit price): three Transportation searches didn't bring up the rate table, so "not sure". Retrieval.
+- `extra-krishjayanth-32` (Google Drive after graduation) and `transportation-krishjayanth-02` (parking after 5 p.m.): still drop the two-year access and the West Campus Garage's 4 p.m. start, as #139 found. Answer.
+- `oal-klee-SAM-01` (WiFi off campus): mentions only eduroam, not the VPN. Answer.
+- `oal-klee-SAM-05` (AI platforms): right answer citing another IT page. Citation, possibly a broken question.
+- `catalog-aguw0kie124-05` (CS capstone): cited a link not in its sources. Citation.
+- `catalog-aguw0kie124-04`, `oal-klee-SAM-11`, `student-rules-kaushalp55-09`, `transportation-krishjayanth-06`: miss once in a while (passed diagnostic runs or most earlier runs).
+
+From now on, these result files are the baseline: a PR that changes the prompt, model or tools runs the affected questions and checks them with `uv run python eval/compare.py --a eval/results/release-final-part*.jsonl --b <new run>`.
 
 ## Release run (#74)
 
