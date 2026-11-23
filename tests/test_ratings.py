@@ -26,19 +26,38 @@ def test_no_match_raises_and_suggests_another_spelling():
     assert "start the same way" not in str(err.value)  # 'eruhi', 'eruh', 'eru' find nobody either
 
 
-def test_no_match_suggests_names_that_start_the_same_way(monkeypatch):
-    found = {"eru": {"data": {"newSearch": {"teachers": {"edges": [
-        {"node": {"firstName": "Tatiana", "lastName": "Erukhimova "}}]}}}}}
-    nobody = {"data": {"newSearch": {"teachers": {"edges": []}}}}
-    asked = []
-    monkeypatch.setattr(data, "_fetch_rmp", lambda name: asked.append(name) or found.get(name, nobody))
-    with pytest.raises(LookupError, match="start the same way: Tatiana Erukhimova\\."):
-        data.professor_ratings("Tatiana Eruhimova")
-    assert asked == ["tatiana eruhimova", "eruhi", "eruh", "eru"]  # the longest word, shortened
-    with pytest.raises(LookupError):
-        data.professor_ratings("tatiana eruhimova")
-    assert len(asked) == 4  # cached, suggestions included
+def _search(*nodes):
+    return {"data": {"newSearch": {"teachers": {"edges": [{"node": n} for n in nodes]}}}}
 
+
+def _teacher(first, last, ratings=12):
+    return {"legacyId": 1, "firstName": first, "lastName": last, "department": "Physics",
+            "avgRating": 4.9, "avgDifficulty": 3.3, "numRatings": ratings, "wouldTakeAgainPercent": 99,
+            "ratings": {"edges": []}}
+
+
+def test_a_close_misspelling_returns_that_professor_with_a_note(monkeypatch):
+    found = {"eru": _search(_teacher("Tatiana", "Erukhimova "))}
+    asked = []
+    monkeypatch.setattr(data, "_fetch_rmp", lambda name: asked.append(name) or found.get(name, _search()))
+    [p] = data.professor_ratings("Tatiana Eruhimova")
+    assert p["title"] == "Tatiana Erukhimova on RateMyProfessors"
+    assert p["text"].startswith("No exact match for 'Tatiana Eruhimova'; Tatiana Erukhimova is the closest name")
+    assert asked == ["tatiana eruhimova", "eruhi", "eruh", "eru"]  # the longest word, shortened
+    data.professor_ratings("tatiana eruhimova")
+    assert len(asked) == 4  # cached
+
+
+@pytest.mark.parametrize("asked, near", [
+    ("Hassanikhenar", "Hassani"),  # a different name: maybe the same person, maybe not
+    ("Leik", "Lei"),               # too short to correct safely
+])
+def test_a_different_name_is_only_suggested(monkeypatch, asked, near):
+    monkeypatch.setattr(data, "_fetch_rmp",
+                        lambda name: _search() if name == asked.lower() else _search(_teacher("Ahmad", near)))
+    with pytest.raises(LookupError, match=f"start the same way: Ahmad {near}\\. These are different names") as err:
+        data.professor_ratings(asked)
+    assert "None of these" in str(err.value)
 
 def test_a_professor_with_no_ratings_is_empty(monkeypatch):
     unrated = {"data": {"newSearch": {"teachers": {"edges": [{"node": {"numRatings": 0}}]}}}}
