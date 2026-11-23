@@ -129,6 +129,8 @@ ASK = "ask_user"
 MAX_OPTIONS = 6
 NOT_ASKED = "Not asked: ask_user can't run with other tools. Use their results first."
 ONE_OPTION = "Not asked: there is only one option ({}). Answer for it without asking."
+LOOK_FIRST = ("Not asked: look things up before offering choices. "
+              "Ask only if the results show more than one match.")
 
 
 def question_of(call: dict) -> dict:
@@ -139,9 +141,28 @@ def question_of(call: dict) -> dict:
             "options": list(dict.fromkeys(options))[:MAX_OPTIONS]}
 
 
-def single_option(call: dict) -> bool:
-    """An ask_user call with exactly one option: nothing to choose, so it isn't asked."""
-    return call["name"] == ASK and len(question_of(call)["options"]) == 1
+def looked_up(messages: list) -> bool:
+    """Whether a tool other than ask_user has run since the student's last message."""
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            return False
+        if isinstance(m, ToolMessage) and m.name != ASK:
+            return True
+    return False
+
+
+def not_asked(call: dict, messages: list) -> str | None:
+    """Why an ask_user call isn't asked, or None if it is. One option leaves nothing to
+    choose. Options before any lookup are guesses (an invented "Which Dr. Kim?"); an open
+    question with no options, like "Which minor?", can still be asked first."""
+    if call["name"] != ASK:
+        return None
+    options = question_of(call)["options"]
+    if len(options) == 1:
+        return ONE_OPTION.format(options[0])
+    if options and not looked_up(messages):
+        return LOOK_FIRST
+    return None
 
 
 def question_text(question: dict) -> str:
@@ -171,8 +192,8 @@ def make_agent_node(model):
         rounds = state.get("rounds", 0)
         if rounds < MAX_ROUNDS:
             reply = with_tools.invoke(messages)
-            looked_up = any(c["name"] != ASK or single_option(c) for c in reply.tool_calls)  # asking isn't a round
-            return {"messages": [reply], "rounds": rounds + looked_up}
+            tools_ran = any(c["name"] != ASK or not_asked(c, state["messages"]) for c in reply.tool_calls)
+            return {"messages": [reply], "rounds": rounds + tools_ran}  # asking isn't a round
 
         # Out of rounds: answer with what we have. Some models still try to
         # call a tool here and the API rejects it, so fall back to "not sure".
@@ -191,18 +212,21 @@ def make_agent_node(model):
 def route(state: State) -> str:
     """Run tools if the model asked for any, ask the student if it only called ask_user,
     otherwise finish."""
-    calls = getattr(state["messages"][-1], "tool_calls", None)
+    messages = state["messages"]
+    calls = getattr(messages[-1], "tool_calls", None)
     if not calls:
         return "check"
-    return "ask" if all(c["name"] == ASK and not single_option(c) for c in calls) else "tools"
+    return "ask" if all(c["name"] == ASK and not not_asked(c, messages) for c in calls) else "tools"
 
 
 def make_tools_node():
     tools = {t.name: t for t in ALL_TOOLS}
 
-    def run_one(call: dict) -> tuple[ToolMessage, list]:
-        if call["name"] == ASK:  # with other tools, or one option: the question isn't asked
-            note = ONE_OPTION.format(question_of(call)["options"][0]) if single_option(call) else NOT_ASKED
+    def run_one(call: dict, messages: list, alone: bool) -> tuple[ToolMessage, list]:
+        if call["name"] == ASK:  # with other tools, or not_asked: the question isn't asked
+            note = not_asked(call, messages)
+            if not note or (note == LOOK_FIRST and not alone):  # the lookup is running now
+                note = NOT_ASKED
             return ToolMessage(note, tool_call_id=call["id"], name=ASK), []
         tool = tools.get(call["name"])
         try:
@@ -216,9 +240,11 @@ def make_tools_node():
 
     def run_tools(state: State, config: RunnableConfig) -> dict:
         """Run every tool call from the model's last message in parallel."""
-        calls = state["messages"][-1].tool_calls
+        messages = state["messages"]
+        calls = messages[-1].tool_calls
+        alone = all(c["name"] == ASK for c in calls)
         with get_executor_for_config(config) as pool:
-            results = list(pool.map(run_one, calls))  # keeps the calls' order
+            results = list(pool.map(lambda c: run_one(c, messages, alone), calls))  # keeps the calls' order
         return {
             "messages": [message for message, _ in results],
             "sources": [p for _, passages in results for p in passages],

@@ -6,7 +6,7 @@ Run from the repo root:  uv run pytest
 import json
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent import data
 from agent.checks import INTRO, NOT_SURE, finalize
@@ -355,15 +355,19 @@ def asks(id="a1", **extra):
     return AIMessage("", tool_calls=[call("ask_user", {**LEYK, **extra}, id)])
 
 
+def looks_up(id="c0"):
+    return AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, id)])
+
+
 def test_a_thread_pauses_on_the_question_and_the_reply_resumes_it():
     model = RecordingModel([
+        looks_up(),
         asks(),
-        AIMessage("", tool_calls=[call("search_student_rules", {"query": "q drops"}, "c1")]),
         AIMessage("Students like Teresa Leyk (https://student-rules.tamu.edu/rule01/)."),
     ])
     graph = thread_graph(model)
     first = answer("is professor leyk good", graph=graph, thread_id="t")
-    assert first["question"] == LEYK and first["sources"] == []
+    assert first["question"] == LEYK and first["sources"] == []  # nothing cited while asking
     assert first["answer"].startswith("Which Professor Leyk?\n- Teresa Leyk")
 
     second = answer("Teresa Leyk (Computer Science)", graph=graph, thread_id="t")
@@ -371,7 +375,7 @@ def test_a_thread_pauses_on_the_question_and_the_reply_resumes_it():
     assert second["answer"].startswith("Students like Teresa Leyk")
     assert [p["source_url"] for p in second["sources"]] == [RULE["source_url"]]
     # the model saw the student's reply as the result of its ask_user call
-    assert model.seen[1][-1].content == "The student answered: Teresa Leyk (Computer Science)"
+    assert model.seen[2][-1].content == "The student answered: Teresa Leyk (Computer Science)"
     assert graph.get_state({"configurable": {"thread_id": "t"}}).interrupts == ()
 
 
@@ -390,7 +394,7 @@ def test_after_an_asked_turn_the_thread_keeps_only_the_question_and_answer():
 
 
 def test_without_a_thread_the_question_is_the_answer():
-    result = answer("is professor leyk good", graph=build_graph(ScriptedModel([asks()])))
+    result = answer("is professor leyk good", graph=build_graph(ScriptedModel([looks_up(), asks()])))
     assert result["answer"] == "Which Professor Leyk?\n- Teresa Leyk (Computer Science)\n- Zbigniew Leyk (Engineering)"
     assert result["sources"] == [] and result["question"] == LEYK  # evals can see that it asked
 
@@ -435,3 +439,24 @@ def test_ask_user_with_one_option_is_not_asked():
     result = answer("is professor kim good", graph=thread_graph(model), thread_id="t")
     assert result["question"] is None
     assert "only one option (Jin Kim)" in [m.content for m in model.seen[1] if getattr(m, "name", None) == "ask_user"][0]
+
+
+def test_options_before_any_lookup_are_not_asked():
+    from agent.graph import LOOK_FIRST
+
+    model = RecordingModel([asks(), looks_up(), asks("a2"),
+                            AIMessage("Teresa Leyk is liked (https://student-rules.tamu.edu/rule01/).")])
+    graph = thread_graph(model)
+    first = answer("how is dr leyk", graph=graph, thread_id="t")
+    assert first["question"] == LEYK  # asked on the second try, after the lookup
+    assert [m.content for m in model.seen[1] if getattr(m, "name", None) == "ask_user"] == [LOOK_FIRST]
+    assert answer("Teresa", graph=graph, thread_id="t")["answer"].startswith("Teresa Leyk is liked")
+
+
+def test_a_lookup_from_an_earlier_turn_does_not_count():
+    from agent.graph import LOOK_FIRST, not_asked
+
+    earlier = [HumanMessage("how is leyk"), ToolMessage("[]", tool_call_id="c0", name="search_student_rules"),
+               AIMessage("Teresa Leyk is liked."), HumanMessage("how is dr kim")]
+    assert not_asked(call("ask_user", LEYK, "a1"), earlier) == LOOK_FIRST
+    assert not_asked(call("ask_user", {"prompt": "Which minor?"}, "a1"), earlier) is None  # open question
