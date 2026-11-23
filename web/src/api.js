@@ -3,7 +3,7 @@ const MAX_HISTORY = 20; // the API rejects more than 20 earlier messages
 
 /**
  * Ask the agent one question. `history` is the earlier turns, oldest first, as
- * [{role: "user" | "assistant", content}]. Resolves to {answer, sources, tools}.
+ * [{role: "user" | "assistant", content}]. Resolves to {answer, sources, tools, grades}.
  * Throws an Error whose message is safe to show the student.
  */
 export async function askAgent(question, history) {
@@ -29,5 +29,10 @@ export async function askAgent(question, history) {
     throw new Error(detail || "AggieFlow can't answer right now. Try again in a minute.");
   }
   const data = await response.json();
-  return { answer: data.answer ?? "", sources: data.sources ?? [], tools: data.tools ?? [] };
+  return {
+    answer: data.answer ?? "",
+    sources: data.sources ?? [],
+    tools: data.tools ?? [],
+    grades: data.grades ?? [], // grade charts, one per course the agent looked up on anex.us
+  };
 }

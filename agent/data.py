@@ -300,7 +300,7 @@ ANEX_CACHE_SECONDS = 24 * 60 * 60  # grades only change about three times a year
 ANEX_GAP_SECONDS = 1.0
 
 _anex_lock = threading.Lock()
-_anex_cache: dict[tuple[str, str], tuple[float, list[Passage]]] = {}
+_anex_cache: dict[tuple[str, str], tuple[float, list[Passage], list[dict]]] = {}  # time, passages, sections
 _anex_last_request = 0.0
 
 
@@ -333,19 +333,51 @@ def _fetch_anex(dept: str, number: str) -> str:
     return resp.text
 
 
-def _anex_course(dept: str, number: str) -> list[Passage]:
-    """All anex passages for one course, live. Ids end in ':live'."""
+def _anex_entry(dept: str, number: str) -> tuple[list[Passage], list[dict]]:
+    """(passages, raw sections) for one course, live and cached. Passage ids end in ':live'."""
     key = (dept, number)
     with _anex_lock:
         hit = _anex_cache.get(key)
         if hit and time.monotonic() - hit[0] < ANEX_CACHE_SECONDS:
-            return hit[1]
+            return hit[1], hit[2]
         anex = _anex_module()
         fetched_at = anex.now_utc()
-        made = anex.course_passages(dept, number, anex.load_sections(_fetch_anex(dept, number)), fetched_at)
+        sections = anex.load_sections(_fetch_anex(dept, number))
+        made = anex.course_passages(dept, number, sections, fetched_at)
         found = [{**p, "id": p["id"] + ":live"} for p in made]
-        _anex_cache[key] = (time.monotonic(), found)
-        return found
+        _anex_cache[key] = (time.monotonic(), found, sections)
+        return found, sections
+
+
+def _anex_course(dept: str, number: str) -> list[Passage]:
+    """All anex passages for one course, live. Ids end in ':live'."""
+    return _anex_entry(dept, number)[0]
+
+
+def grade_chart(code: str) -> dict | None:
+    """Grade counts by professor for one course, for the UI's chart: the same professors
+    (since anex.RECENT_SINCE_YEAR, at least anex.MIN_RANKED_STUDENTS graded students) and
+    numbers as get_course_grades' ranking. None when no professor qualifies.
+
+    {"course", "source_url", "since", "min_students",
+     "professors": [{"name", "sections", "gpa", "counts": {"A", "B", "C", "D", "F", "Q"}}]}
+    """
+    dept, number = parse_course(code)
+    anex = _anex_module()
+    ranked = anex.ranked_professors(_anex_entry(dept, number)[1])
+    if not ranked:
+        return None
+    return {
+        "course": f"{dept} {number}",
+        "source_url": anex.PAGE_URL.format(dept=dept, number=number),
+        "since": anex.RECENT_SINCE_YEAR,
+        "min_students": anex.MIN_RANKED_STUDENTS,
+        "professors": [
+            {"name": name, "sections": t.sections, "gpa": round(t.gpa, 2),
+             "counts": {g: t.counts[g] for g in [*anex.GRADES, "Q"]}}
+            for name, t in ranked
+        ],
+    }
 
 
 def grades(code: str) -> list[Passage]:

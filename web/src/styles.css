@@ -417,6 +417,196 @@ button {
   gap: 6px;
 }
 
+/* --- Grade chart --------------------------------------------------------- */
+
+.grade-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.grade-chart-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.grade-chart-titles {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.grade-chart-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.grade-chart-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sort-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--panel);
+  border-radius: 10px;
+}
+.sort-tabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sort-tabs button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--maroon);
+  box-shadow: 0 1px 2px rgba(28, 26, 25, 0.12);
+}
+
+.grade-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) minmax(140px, 2.4fr) repeat(3, minmax(56px, 0.7fr));
+  grid-template-areas: "name bar gpa a q";
+  align-items: center;
+  gap: 16px;
+  padding: 12px 4px;
+  border-top: 1px solid #efece9;
+}
+.grade-name {
+  grid-area: name;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.grade-prof {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.grade-sections {
+  font-size: 12px;
+  color: var(--muted);
+}
+.grade-bar {
+  grid-area: bar;
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.grade-bar span {
+  display: block;
+  height: 100%;
+}
+.grade-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+.grade-gpa {
+  grid-area: gpa;
+}
+.grade-a {
+  grid-area: a;
+}
+.grade-q {
+  grid-area: q;
+}
+.grade-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.grade-unit {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.grade-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid #efece9;
+  padding-top: 12px;
+}
+.grade-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.grade-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.show-all {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--maroon);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.show-all:hover {
+  border-color: var(--maroon);
+}
+
+@media (max-width: 600px) {
+  .grade-chart {
+    padding: 14px;
+  }
+  .grade-row {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas:
+      "name name name"
+      "bar bar bar"
+      "gpa a q";
+    gap: 8px 12px;
+  }
+  .grade-stat {
+    text-align: left;
+  }
+  .sort-tabs {
+    width: 100%;
+  }
+  .sort-tabs button {
+    flex: 1;
+    padding: 0 4px;
+    white-space: nowrap;
+    font-size: 11.5px;
+  }
+  .show-all {
+    margin-left: 0;
+  }
+}
+
 .sources {
   display: flex;
   flex-direction: column;
