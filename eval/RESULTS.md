@@ -57,8 +57,8 @@ Every question in `eval/questions/` (179 tasks: 145 single-turn, 16 ask, 18 mult
 | conversation | 3 |
 | retrieval | 2 |
 
-**Broken question (12).** The answer was right, but the reference or the pages it accepts were out of date. 10 are fixed (see Question fixes). 2 need a decision:
-- `extra-krishjayanth-01` ("hey!") and `-02` ("thanks, that helped a lot"), 0 of 3: they expect "not sure", but since #113 greetings and thanks get the intro. The grader needs a rule for greetings, or the questions should go.
+**Broken question (12).** The answer was right, but the reference or the pages it accepts were out of date. All 12 are fixed (see Question fixes).
+- `extra-krishjayanth-01` ("hey!") and `-02` ("thanks, that helped a lot"), 0 of 3: they expected "not sure", but since #113 greetings and thanks get the intro.
 - `student-rules-rushilsagar-10` ("how much is a parking permit"), 0 of 3: expected "not sure", but Transportation is collected now, so the agent answers correctly.
 - `catalog-aguw0kie124-09` (Thanksgiving break), `student-rules-rushilsagar-07` (summa cum laude), `-08` and `extra-krishjayanth-21` (hours to be a junior or sophomore), `student-rules-rafperez010-01` (registration hold), `oal-klee-SAM-03` (Help Desk contact), all 0 of 3: right answers cited from the Registrar's calendar, the catalog or another IT page, which the questions didn't accept.
 - `student-rules-rushilsagar-02` (fall Q-drop deadline), 0 of 3: gave the Fall 2026 date, which the reference didn't include.
@@ -94,12 +94,13 @@ Issues for the agent mistakes: #135 (tool choice), #136 (asking with one option 
 
 ### Question fixes
 
-After the run, 10 broken questions were fixed (commits `d4320c6` and `85b5236`):
+After the run, all 12 broken questions were fixed:
+- the 2 greetings are tagged `greeting`, so the agent's intro passes and the judge isn't asked
 - the 6 that cited another right page now accept it
 - the parking-permit question now expects the 2026-27 rates
 - the fall Q-drop, MUSC 224 and WiFi references now accept the other right answers
 
-Each fixed question passed a check run afterward. The scores above are from before the fixes. The greeting questions are unchanged until there's a decision.
+Each fixed question passed a check run afterward. The scores above are from before the fixes.
 
 ## How we got here
 

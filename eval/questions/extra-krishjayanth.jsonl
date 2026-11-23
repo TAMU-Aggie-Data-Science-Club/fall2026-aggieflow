@@ -1,5 +1,5 @@
-{"id": "extra-krishjayanth-01", "question": "hey!", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool"]}
-{"id": "extra-krishjayanth-02", "question": "thanks, that helped a lot", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool"]}
+{"id": "extra-krishjayanth-01", "question": "hey!", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool", "greeting"]}
+{"id": "extra-krishjayanth-02", "question": "thanks, that helped a lot", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool", "greeting"]}
 {"id": "extra-krishjayanth-03", "question": "where should i eat on northgate tonight", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool"]}
 {"id": "extra-krishjayanth-04", "question": "what time does sbisa open on saturday", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool"]}
 {"id": "extra-krishjayanth-05", "question": "when is the next aggie football home game", "answer": "NOT_SURE", "source_url": null, "tools": [], "set": "regression", "tags": ["no-tool"]}
