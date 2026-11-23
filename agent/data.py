@@ -525,7 +525,8 @@ def _taught(t: dict, dept: str, number: str) -> bool:
 
 def professor_ratings(professor: str, course: str | None = None) -> list[Passage]:
     """RateMyProfessors ratings and newest reviews for Texas A&M professors
-    matching a name, most-rated first. Professors with no ratings are left out.
+    matching a name, most-rated first. Professors with no ratings are left out
+    (so [] means they exist but have no ratings); a name that matches nobody raises LookupError.
     With a course, only professors with a review for it are kept, unless none have one."""
     key = " ".join(_WORD.findall(professor.lower()))
     if not key:
@@ -534,12 +535,13 @@ def professor_ratings(professor: str, course: str | None = None) -> list[Passage
     with _rmp_lock:
         hit = _rmp_cache.get(key)
         if hit and time.monotonic() - hit[0] < RMP_CACHE_SECONDS:
-            teachers, fetched_at = hit[1], hit[2]
+            teachers, fetched_at, matched = hit[1], hit[2], hit[3]
         else:
             fetched_at = _anex_module().now_utc()
             raw = _fetch_rmp(key)
             try:
                 teachers = [e["node"] for e in raw["data"]["newSearch"]["teachers"]["edges"]]
+                matched = bool(teachers)
                 teachers = [t for t in teachers if t["numRatings"] > 0]
                 # RMP matches any one word ('John Keyser' finds every John), so
                 # professors whose last name was asked for come first.
@@ -550,7 +552,12 @@ def professor_ratings(professor: str, course: str | None = None) -> list[Passage
                 [_rmp_passage(t, fetched_at) for t in teachers]  # check the shape before caching
             except (KeyError, TypeError) as err:
                 raise RuntimeError("RateMyProfessors changed its response format; the tool needs updating") from err
-            _rmp_cache[key] = (time.monotonic(), teachers, fetched_at)
+            _rmp_cache[key] = (time.monotonic(), teachers, fetched_at, matched)
+    if not matched:  # RMP's search doesn't fuzzy-match: 'eruhimova' finds nobody (#117)
+        raise LookupError(
+            f"no Texas A&M professor on RateMyProfessors matches {professor!r}. Its search needs "
+            "the exact spelling: try again with another spelling, the last name only, or the name "
+            "as get_professor_grades or get_course_grades lists it")
     if wanted:
         teachers = [t for t in teachers if _taught(t, *wanted)] or teachers
     return [_rmp_passage(t, fetched_at) for t in teachers]

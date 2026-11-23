@@ -19,8 +19,17 @@ def test_matches_are_passages_most_rated_first():
     assert "CSCE221" in first["text"]
 
 
-def test_no_match_is_empty():
-    assert data.professor_ratings("Nobodyhere") == []
+def test_no_match_raises_and_suggests_another_spelling():
+    # RMP doesn't fuzzy-match, so the agent needs an error to know to retry (#117)
+    with pytest.raises(LookupError, match="another spelling"):
+        data.professor_ratings("Eruhimova")
+
+
+def test_a_professor_with_no_ratings_is_empty(monkeypatch):
+    unrated = {"data": {"newSearch": {"teachers": {"edges": [{"node": {"numRatings": 0}}]}}}}
+    monkeypatch.setattr(data, "_fetch_rmp", lambda name: unrated)
+    assert data.professor_ratings("Hassanikhenar") == []
+    assert data.professor_ratings("Hassanikhenar") == []  # same from the cache
 
 
 def test_blank_name_is_rejected():
