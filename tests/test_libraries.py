@@ -174,6 +174,17 @@ def test_tools_return_live_passages_the_check_dates():
     assert "(as of " in text  # live data says when it was fetched
 
 
+def test_a_library_search_that_finds_nothing_points_to_the_library_site():
+    text, cited = finalize("I couldn't find that.", [], ["search_libraries"])
+    assert cited == [] and "the University Libraries (https://library.tamu.edu)" in text
+
+
+def test_every_tool_has_a_site_for_not_sure():
+    from agent.checks import SITES
+    from agent.tools import ALL_TOOLS
+    assert {t.name for t in ALL_TOOLS} <= set(SITES)
+
+
 # --- the collector ----------------------------------------------------------------
 
 @pytest.mark.parametrize("url,kept", [
