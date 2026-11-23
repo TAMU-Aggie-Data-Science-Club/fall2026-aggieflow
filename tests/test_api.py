@@ -144,3 +144,52 @@ def test_chat_returns_the_question_when_the_agent_asks(client, monkeypatch):
                                                               "sources": [], "calls": [], "question": asked})
     body = client.post("/chat", json={"question": "is professor leyk good"}).json()
     assert body["question"] == asked and body["sources"] == []
+
+
+# --- /chat/stream (#142) ---------------------------------------------------------
+
+def parse_sse(text):
+    """[(event, data)] from a text/event-stream body."""
+    import json
+
+    events = []
+    for block in text.strip().split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((fields["event"], json.loads(fields["data"])))
+    return events
+
+
+def fake_answer_stream(question, history=None, metadata=None, thread_id=None):
+    yield "step", {"name": "search_student_rules", "args": {"query": "q drops"}}
+    yield "step", {"name": "search_student_rules", "args": {"query": "q drop limit"}}
+    yield "result", fake_answer(question)
+
+
+def test_chat_stream_sends_each_step_then_the_same_reply_as_chat(client, monkeypatch):
+    monkeypatch.setattr(api.main, "answer", fake_answer)
+    monkeypatch.setattr(api.main, "answer_stream", fake_answer_stream)
+    thread = str(uuid.uuid4())
+    r = client.post("/chat/stream", json={"question": "how many q drops do i get", "thread_id": thread})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(r.text)
+    assert [e for e, _ in events] == ["step", "step", "done"]
+    assert events[0][1] == {"name": "search_student_rules", "args": {"query": "q drops"}}
+    plain = client.post("/chat", json={"question": "how many q drops do i get", "thread_id": thread}).json()
+    assert events[-1][1] == plain
+
+
+def test_chat_stream_reports_a_failure_as_an_error_event(client, monkeypatch):
+    def broken(question, **kwargs):
+        yield "step", {"name": "search_student_rules", "args": {}}
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(api.main, "answer_stream", broken)
+    events = parse_sse(client.post("/chat/stream", json={"question": "q drops?"}).text)
+    assert [e for e, _ in events] == ["step", "error"]
+    assert events[-1][1] == {"detail": "AggieFlow can't answer right now. Try again in a minute."}
+
+
+def test_chat_stream_validates_like_chat(client):
+    assert client.post("/chat/stream", json={"question": ""}).status_code == 422
+
