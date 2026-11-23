@@ -127,10 +127,11 @@ class ask_user(BaseModel):
 
 ASK = "ask_user"
 MAX_OPTIONS = 6
-NOT_ASKED = "Not asked: ask_user can't run with other tools. Use their results first."
+NOT_ASKED = ("Not asked: ask_user can't run with other tools. Use their results first; "
+             "if they show more than one match, call ask_user with those choices.")
 ONE_OPTION = "Not asked: there is only one option ({}). Answer for it without asking."
-LOOK_FIRST = ("Not asked: look things up before offering choices. "
-              "Ask only if the results show more than one match.")
+LOOK_FIRST = ("Not asked: look things up before offering choices. If the results "
+              "show more than one match, call ask_user with those choices.")
 
 
 def question_of(call: dict) -> dict:
