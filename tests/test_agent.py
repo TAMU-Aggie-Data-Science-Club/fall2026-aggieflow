@@ -4,6 +4,7 @@ Run from the repo root:  uv run pytest
 """
 
 import json
+import uuid
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -233,6 +234,10 @@ def test_answer_tags_the_trace_with_run_and_question_metadata():
     assert meta["question_id"] == "sr-01"
     assert {"model", "temperature", "search", "commit"} <= meta.keys()
     assert result["documents"] == [RULE]  # duplicates dropped
+    # the run gets a known id, so a thumbs up or down can be attached to it later
+    assert isinstance(seen["config"]["run_id"], uuid.UUID)
+    assert result["run_id"] == str(seen["config"]["run_id"])
+    assert answer("how many q drops", graph=FakeGraph())["run_id"] != result["run_id"]
 
 
 # --- multi-turn -------------------------------------------------------------

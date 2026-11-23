@@ -9,7 +9,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
-import { askAgent } from "./api.js";
+import { askAgent, sendFeedback } from "./api.js";
 import GradeChart from "./GradeChart.jsx";
 
 // Our chips wrap onto new lines instead of AI Elements' default single scrolling row.
@@ -98,6 +98,18 @@ export default function App() {
     run(id, turns[index].question, history);
   }
 
+  async function rate(id, runId, score) {
+    const update = (changes) =>
+      setTurns((ts) => ts.map((t) => (t.id === id && t.feedback === score ? { ...t, ...changes } : t)));
+    setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, feedback: score, feedbackStatus: null } : t)));
+    try {
+      await sendFeedback(runId, score);
+      update({ feedbackStatus: "sent" });
+    } catch {
+      update({ feedback: null, feedbackStatus: "failed" });
+    }
+  }
+
   function newQuestion() {
     conversation.current += 1;
     threadId.current = null;
@@ -110,7 +122,7 @@ export default function App() {
       {turns.length === 0 ? (
         <Home onAsk={ask} />
       ) : (
-        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} />
+        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} onRate={rate} />
       )}
     </div>
   );
@@ -248,7 +260,7 @@ function FeatureIcon({ name }) {
   );
 }
 
-function Conversation({ turns, pending, onAsk, onRetry }) {
+function Conversation({ turns, pending, onAsk, onRetry, onRate }) {
   return (
     <main className="conversation">
       <header className="conversation-header">
@@ -263,6 +275,7 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
               turn={turn}
               retryDisabled={pending}
               onRetry={() => onRetry(turn.id)}
+              onRate={(score) => onRate(turn.id, turn.runId, score)}
               onPick={i === turns.length - 1 && !pending ? onAsk : null}
             />
           ))}
@@ -280,7 +293,7 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
   );
 }
 
-function Turn({ turn, retryDisabled, onRetry, onPick }) {
+function Turn({ turn, retryDisabled, onRetry, onPick, onRate }) {
   return (
     <>
       <Message from="user" className="max-w-[80%] self-end">
@@ -317,6 +330,9 @@ function Turn({ turn, retryDisabled, onRetry, onPick }) {
             <GradeChart key={chart.course} chart={chart} />
           ))}
           {turn.sources.length > 0 && <Sources sources={turn.sources} />}
+          {turn.runId && !turn.asked && (
+            <Feedback value={turn.feedback} status={turn.feedbackStatus} onRate={onRate} />
+          )}
         </Message>
       )}
     </>
@@ -337,6 +353,41 @@ function Choices({ question, onPick }) {
         </Suggestions>
       )}
     </div>
+  );
+}
+
+const FEEDBACK_STATUS = {
+  sent: "Thanks for the feedback.",
+  failed: "Couldn't send that. Try again later.",
+};
+
+/** Thumbs up or down on an answer. It goes to LangSmith with the answer's run, so the team
+ * can find the answers students marked down. Picking the other thumb sends that one too. */
+function Feedback({ value, status, onRate }) {
+  const pick = (score) => value !== score && onRate(score);
+  return (
+    <div className="feedback" role="group" aria-label="Was this answer helpful?">
+      <button type="button" className="feedback-button" aria-pressed={value === 1} title="Helpful" onClick={() => pick(1)}>
+        <ThumbIcon />
+        <span className="visually-hidden">Helpful</span>
+      </button>
+      <button type="button" className="feedback-button" aria-pressed={value === 0} title="Not helpful" onClick={() => pick(0)}>
+        <ThumbIcon down />
+        <span className="visually-hidden">Not helpful</span>
+      </button>
+      <span className="feedback-status" role="status">
+        {FEEDBACK_STATUS[status] ?? ""}
+      </span>
+    </div>
+  );
+}
+
+function ThumbIcon({ down = false }) {
+  return (
+    <svg aria-hidden="true" className={down ? "thumb-down" : undefined} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 10v12" />
+      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+    </svg>
   );
 }
 

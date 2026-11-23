@@ -60,6 +60,26 @@ class request(BaseModel):
     #the conversation to continue; leave it out to start one (the reply has its id)
     thread_id: uuid.UUID | None = None
 
+#a thumbs up (1) or down (0) on one answer, by the run_id /chat returned with it
+class feedback(BaseModel):
+    run_id: uuid.UUID
+    score: int = Field(ge=0, le=1)
+
+#the feedback key in LangSmith, next to the answer's run
+FEEDBACK_KEY = "user_score"
+
+
+def feedback_enabled() -> bool:
+    """Answers only reach LangSmith when tracing is on, so feedback needs the same settings."""
+    return bool(os.getenv("LANGSMITH_API_KEY")) and os.getenv("LANGSMITH_TRACING", "").lower() == "true"
+
+
+def send_feedback(run_id: str, score: int) -> None:
+    from langsmith import Client
+
+    #the answer is the root run of its trace, so both ids are the same
+    Client().create_feedback(run_id=run_id, trace_id=run_id, key=FEEDBACK_KEY, score=score)
+
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -112,11 +132,23 @@ def chat(request: request):
             "steps": steps,
             "grades": grade_charts(result["calls"]),
             "thread_id": thread_id,
+            #send it back to /feedback with a thumbs up or down on this answer
+            "run_id": result.get("run_id"),
             #set when the agent asks which one the student means: {prompt, options}; reply with the same thread_id
             "question": result.get("question"),
         }
     except Exception:
         logger.exception("Chat request failed")
         raise HTTPException(status_code=503, detail="AggieFlow can't answer right now. Try again in a minute.")
-  
 
+
+@app.post("/feedback")
+def rate(feedback: feedback):
+    if not feedback_enabled():
+        raise HTTPException(status_code=503, detail="Feedback isn't turned on for this server.")
+    try:
+        send_feedback(str(feedback.run_id), feedback.score)
+    except Exception:
+        logger.exception("Feedback failed")
+        raise HTTPException(status_code=503, detail="Couldn't send your feedback. Try again in a minute.")
+    return {"ok": True}

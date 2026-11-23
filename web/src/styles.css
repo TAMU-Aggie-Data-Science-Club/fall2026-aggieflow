@@ -751,6 +751,40 @@ button {
   font-weight: 600;
   cursor: pointer;
 }
+.feedback {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.feedback-button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.feedback-button:hover,
+.feedback-button[aria-pressed="true"] {
+  color: var(--maroon);
+  background: var(--maroon-tint);
+}
+.feedback-button[aria-pressed="true"] {
+  border-color: var(--line);
+}
+.thumb-down {
+  transform: rotate(180deg);
+}
+.feedback-status {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .retry:disabled {
   opacity: 0.5;
   cursor: not-allowed;
