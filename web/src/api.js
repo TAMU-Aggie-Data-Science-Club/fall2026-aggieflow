@@ -10,12 +10,24 @@ const MAX_HISTORY = 20; // the API rejects more than 20 earlier messages
  * option or typed words) goes back as the next question in the same thread.
  * Throws an Error whose message is safe to show the student.
  */
+let getToken = null; // set by auth.jsx when Clerk sign-in is on: resolves to a session token
+
+/** Sign-in (auth.jsx) hands over Clerk's getToken, so each request carries the user's token. */
+export function setTokenGetter(fn) {
+  getToken = fn;
+}
+
+async function authHeaders() {
+  const token = getToken ? await getToken() : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function askAgent(question, history, threadId = null) {
   let response;
   try {
     response = await fetch(`${API_URL}/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ question, history: history.slice(-MAX_HISTORY), thread_id: threadId }),
     });
   } catch {
