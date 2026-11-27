@@ -722,6 +722,11 @@ button {
   font-size: 14px;
   color: var(--muted);
 }
+.thinking-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .error-turn {
   display: flex;
   align-items: center;
@@ -837,4 +842,9 @@ button {
   .beta {
     display: none;
   }
+}
+
+/* Checkpoints between answered turns ("Restore to here") */
+.checkpoint {
+  margin: 4px 0;
 }

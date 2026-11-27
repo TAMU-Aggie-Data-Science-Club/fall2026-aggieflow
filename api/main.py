@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -5,13 +6,14 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI()
 
 from agent import data
-from agent.run import answer
+from agent.run import answer, answer_stream
 
 logger = logging.getLogger(__name__)
 # Only course lookups: get_professor_grades answers with all-time numbers, the chart is since 2023.
@@ -66,60 +68,90 @@ class request(BaseModel):
 def health():
     return {"ok": True}
 #if youre reading, this file was written by hand by aguw0kie124 [┐∵]┘
-@app.post("/chat")
-def chat(request: request):
+UNAVAILABLE = "AggieFlow can't answer right now. Try again in a minute."
+
+
+def reply(result: dict, thread_id: str) -> dict:
+    """The JSON both /chat and /chat/stream send for one answer."""
+    answer_text = result["answer"].split("\nSources:")[0].strip()
+
+    sources = []
+    seen = set()
+
+    for source in result["sources"]:
+        url = source["source_url"]
+
+        if url not in seen:
+            seen.add(url)
+            sources.append({
+                "title": source["title"],
+                "source_url": url,
+                "source": source["source"],
+            })
+
+    tools = list(dict.fromkeys([call["name"] for call in result["calls"]]))
+
+    #every lookup in order, for the UI's tool steps (ask_user is shown as the question instead)
+    steps = [
+        {"name": call["name"], "args": call["args"], "error": call["error"]}
+        for call in result["calls"]
+        if call["name"] != "ask_user"
+    ]
+
+    return {
+        "answer": answer_text,
+        "sources": sources,
+        "tools": tools,
+        "steps": steps,
+        "grades": grade_charts(result["calls"]),
+        "thread_id": thread_id,
+        #set when the agent asks which one the student means: {prompt, options}; reply with the same thread_id
+        "question": result.get("question"),
+    }
+
+
+def turn(request: request) -> tuple[str, dict]:
+    """The question's keyword arguments for answer() / answer_stream(), and its thread id."""
     history = [
         {"role": message.role, "content": message.content} for message in request.history
     ]
-
     thread_id = str(request.thread_id or uuid.uuid4())
+    return thread_id, {"history": history, "metadata": {"via": "api"}, "thread_id": thread_id}
 
+
+@app.post("/chat")
+def chat(request: request):
+    thread_id, kwargs = turn(request)
     try:
-        result = answer(
-            request.question,
-            history = history,
-            metadata = {"via": "api"},
-            thread_id = thread_id,
-        )
-
-        answer_text = result["answer"].split("\nSources:")[0].strip()
-
-        sources = []
-        seen = set()
-
-        for source in result["sources"]:
-            url = source["source_url"]
-
-            if url not in seen:
-                seen.add(url)
-                sources.append({
-                    "title": source["title"],
-                    "source_url": url,
-                    "source": source["source"],
-                })
-
-        tools = list(dict.fromkeys([call["name"] for call in result["calls"]]))
-
-        #every lookup in order, for the UI's tool steps (ask_user is shown as the question instead)
-        steps = [
-            {"name": call["name"], "args": call["args"], "error": call["error"]}
-            for call in result["calls"]
-            if call["name"] != "ask_user"
-        ]
-
-        return {
-            "answer": answer_text,
-            "sources": sources,
-            "tools": tools,
-            "steps": steps,
-            "grades": grade_charts(result["calls"]),
-            "thread_id": thread_id,
-            #set when the agent asks which one the student means: {prompt, options}; reply with the same thread_id
-            "question": result.get("question"),
-        }
+        return reply(answer(request.question, **kwargs), thread_id)
     except Exception:
         logger.exception("Chat request failed")
-        raise HTTPException(status_code=503, detail="AggieFlow can't answer right now. Try again in a minute.")
+        raise HTTPException(status_code=503, detail=UNAVAILABLE)
+
+
+def sse(event: str, data: dict) -> str:
+    """One Server-Sent Event."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat/stream")
+def chat_stream(request: request):
+    """/chat as Server-Sent Events (#142), so the UI can show each lookup while the agent
+    works: one `step` event per tool call as it starts ({name, args}), then `done` with
+    exactly the JSON /chat returns, or `error` ({detail}) if the agent fails."""
+    thread_id, kwargs = turn(request)
+
+    def events():
+        try:
+            for kind, value in answer_stream(request.question, **kwargs):
+                yield sse("step", value) if kind == "step" else sse("done", reply(value, thread_id))
+        except Exception:
+            logger.exception("Chat stream failed")
+            yield sse("error", {"detail": UNAVAILABLE})
+
+    # no-cache and X-Accel-Buffering: no, so proxies pass each event on as it comes
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # The built UI (cd web && npm run build), served at / when it exists, as in the Docker

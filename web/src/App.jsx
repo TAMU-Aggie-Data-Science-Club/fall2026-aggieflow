@@ -1,15 +1,16 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   Conversation as ConversationLog,
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-elements/checkpoint";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
-import { askAgent } from "./api.js";
+import { askAgentStreaming } from "./api.js";
 import GradeChart from "./GradeChart.jsx";
 
 // Our chips wrap onto new lines instead of AI Elements' default single scrolling row.
@@ -70,7 +71,11 @@ export default function App() {
   async function run(id, question, history) {
     const started = conversation.current;
     try {
-      const result = await askAgent(question, history, threadId.current);
+      const onStep = (step) => {
+        if (conversation.current !== started) return;
+        setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, live: [...(t.live ?? []), step] } : t)));
+      };
+      const result = await askAgentStreaming(question, history, threadId.current, onStep);
       if (conversation.current !== started) return;
       threadId.current = result.threadId;
       setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "done", ...result } : t)));
@@ -85,7 +90,7 @@ export default function App() {
     if (!question || pending) return false;
     const id = nextId++;
     const history = historyBefore(turns, turns.length);
-    setTurns((ts) => [...ts, { id, question, status: "pending" }]);
+    setTurns((ts) => [...ts, { id, question, status: "pending", live: [] }]);
     run(id, question, history);
     return true;
   }
@@ -94,8 +99,18 @@ export default function App() {
     if (pending) return;
     const index = turns.findIndex((t) => t.id === id);
     const history = historyBefore(turns, index);
-    setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "pending", error: undefined } : t)));
+    setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "pending", error: undefined, live: [] } : t)));
     run(id, turns[index].question, history);
+  }
+
+  /** Checkpoints: go back to just after turn `index`, dropping the answers after it. The
+   * server's thread still has them, so the next question starts a new thread that gets the
+   * kept turns as its history. */
+  function restore(index) {
+    if (pending) return;
+    conversation.current += 1;
+    threadId.current = null;
+    setTurns((ts) => ts.slice(0, index + 1));
   }
 
   function newQuestion() {
@@ -110,7 +125,7 @@ export default function App() {
       {turns.length === 0 ? (
         <Home onAsk={ask} />
       ) : (
-        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} />
+        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} onRestore={restore} />
       )}
     </div>
   );
@@ -248,7 +263,7 @@ function FeatureIcon({ name }) {
   );
 }
 
-function Conversation({ turns, pending, onAsk, onRetry }) {
+function Conversation({ turns, pending, onAsk, onRetry, onRestore }) {
   return (
     <main className="conversation">
       <header className="conversation-header">
@@ -258,13 +273,27 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
       <ConversationLog className="thread">
         <ConversationContent className="thread-inner">
           {turns.map((turn, i) => (
-            <Turn
-              key={turn.id}
-              turn={turn}
-              retryDisabled={pending}
-              onRetry={() => onRetry(turn.id)}
-              onPick={i === turns.length - 1 && !pending ? onAsk : null}
-            />
+            <Fragment key={turn.id}>
+              <Turn
+                turn={turn}
+                retryDisabled={pending}
+                onRetry={() => onRetry(turn.id)}
+                onPick={i === turns.length - 1 && !pending ? onAsk : null}
+              />
+              {/* a checkpoint between answered turns: go back to here */}
+              {turn.status === "done" && i < turns.length - 1 && (
+                <Checkpoint className="checkpoint">
+                  <CheckpointIcon />
+                  <CheckpointTrigger
+                    disabled={pending}
+                    onClick={() => onRestore(i)}
+                    tooltip="Remove the answers after this one and ask from here"
+                  >
+                    Restore to here
+                  </CheckpointTrigger>
+                </Checkpoint>
+              )}
+            </Fragment>
           ))}
         </ConversationContent>
         <ConversationScrollButton aria-label="Scroll to the newest answer" />
@@ -287,8 +316,11 @@ function Turn({ turn, retryDisabled, onRetry, onPick }) {
         <MessageContent className="user-bubble">{turn.question}</MessageContent>
       </Message>
       {turn.status === "pending" && (
-        <div className="thinking" role="status" aria-live="polite">
-          {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">Thinking…</Shimmer>}
+        <div className="thinking-turn">
+          {turn.live?.length > 0 && <Steps steps={turn.live} running />}
+          <div className="thinking" role="status" aria-live="polite">
+            {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">{turn.live?.length ? "Looking things up…" : "Thinking…"}</Shimmer>}
+          </div>
         </div>
       )}
       {turn.status === "error" && (
@@ -393,7 +425,8 @@ const TOOL_LABELS = {
 const ARG_LABELS = { course: "Course", professor: "Professor", query: "Searched for" };
 
 /** The lookups the agent ran for this answer, each one expandable to show what it asked. */
-function Steps({ steps }) {
+/** The agent's lookups. `running`: the answer isn't in yet, so the latest one shows as running. */
+function Steps({ steps, running = false }) {
   return (
     <div className="steps">
       {steps.map((step, i) => {
@@ -406,7 +439,7 @@ function Steps({ steps }) {
               type="dynamic-tool"
               toolName={step.name}
               title={main ? `${label}: ${main}` : label}
-              state={step.error ? "output-error" : "output-available"}
+              state={running && i === steps.length - 1 ? "input-available" : step.error ? "output-error" : "output-available"}
             />
             {args.length > 0 && (
               <ToolContent className="step-content">

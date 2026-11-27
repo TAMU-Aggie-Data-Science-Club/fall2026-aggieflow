@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from agent import data
 from agent.checks import INTRO, NOT_SURE, finalize
 from agent.graph import build_graph
-from agent.run import answer
+from agent.run import answer, answer_stream
 
 RULE = {
     "id": "student-rules:rule01:4",
@@ -460,3 +460,35 @@ def test_a_lookup_from_an_earlier_turn_does_not_count():
                AIMessage("Teresa Leyk is liked."), HumanMessage("how is dr kim")]
     assert not_asked(call("ask_user", LEYK, "a1"), earlier) == LOOK_FIRST
     assert not_asked(call("ask_user", {"prompt": "Which minor?"}, "a1"), earlier) is None  # open question
+
+
+# --- answer_stream (#142) --------------------------------------------------------
+
+def two_rounds():
+    return [
+        AIMessage("", tool_calls=[call("get_course_grades", {"course": "CHEM 107"}, "1"),
+                                  call("search_student_rules", {"query": "q-drop"}, "2")]),
+        AIMessage("Martinez is highest (https://anex.us/grades/?dept=CHEM&number=107)."),
+    ]
+
+
+def test_answer_stream_yields_each_lookup_then_the_same_result_as_answer():
+    events = list(answer_stream("easiest chem 107 prof and how many q drops",
+                                graph=build_graph(ScriptedModel(two_rounds()))))
+    assert events[:-1] == [("step", {"name": "get_course_grades", "args": {"course": "CHEM 107"}}),
+                           ("step", {"name": "search_student_rules", "args": {"query": "q-drop"}})]
+    kind, streamed = events[-1]
+    assert kind == "result"
+    expected = answer("easiest chem 107 prof and how many q drops", graph=build_graph(ScriptedModel(two_rounds())))
+    assert streamed == expected
+
+
+def test_answer_stream_returns_the_question_when_the_agent_asks_which_one():
+    graph = thread_graph(RecordingModel([looks_up(), asks()]))
+    events = list(answer_stream("is professor leyk good", graph=graph, thread_id="t"))
+    assert [kind for kind, _ in events] == ["step", "result"]  # the lookup, not ask_user
+    assert events[0][1]["name"] == "search_student_rules"
+    result = events[-1][1]
+    assert result["question"] == LEYK and result["sources"] == []
+    assert result["answer"].startswith("Which Professor Leyk?")
+
