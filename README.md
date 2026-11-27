@@ -52,6 +52,19 @@ cd web && npm install && npm run dev
 
 Then open http://localhost:5173. The UI calls the API at `http://localhost:8000`. To use another address, copy `web/.env.example` to `web/.env` and set `VITE_API_URL`.
 
+## Sign-in (optional)
+
+Sign-in uses [Clerk](https://clerk.com) and is off until both keys are set. It's off in local development by default.
+
+1. In the Clerk dashboard, open **API keys** and copy the **Publishable key** and the **Frontend API URL**.
+2. Put the publishable key in `web/.env` as `VITE_CLERK_PUBLISHABLE_KEY`, and the Frontend API URL in `.env` as `CLERK_ISSUER`.
+
+With sign-in on:
+- The UI shows Clerk's sign-in page first.
+- Every `/chat` request needs the user's session token. The API checks the token against Clerk's public keys, and the site that asked for it must be in `ALLOWED_ORIGINS`.
+- Each user's conversations are their own.
+- Users are grouped by their active Clerk Organization. Anyone without one belongs to `tamu`.
+
 ## Tech stack
 
 | Layer | Technology |

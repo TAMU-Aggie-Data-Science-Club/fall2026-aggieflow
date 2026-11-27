@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -10,6 +10,7 @@ app = FastAPI()
 
 from agent import data
 from agent.run import answer
+from api.auth import User, current_user, scoped_thread
 
 logger = logging.getLogger(__name__)
 # Only course lookups: get_professor_grades answers with all-time numbers, the chart is since 2023.
@@ -64,8 +65,9 @@ class request(BaseModel):
 def health():
     return {"ok": True}
 #if youre reading, this file was written by hand by aguw0kie124 [┐∵]┘
+#with CLERK_ISSUER set, /chat needs a Clerk sign-in (api/auth.py); user is None when it's off
 @app.post("/chat")
-def chat(request: request):
+def chat(request: request, user: User | None = Depends(current_user)):
     history = [
         {"role": message.role, "content": message.content} for message in request.history
     ]
@@ -76,8 +78,9 @@ def chat(request: request):
         result = answer(
             request.question,
             history = history,
-            metadata = {"via": "api"},
-            thread_id = thread_id,
+            metadata = {"via": "api", **({"user": user.id, "org": user.org} if user else {})},
+            #each user's conversations are their own: the thread is kept under their id
+            thread_id = scoped_thread(thread_id, user),
         )
 
         answer_text = result["answer"].split("\nSources:")[0].strip()

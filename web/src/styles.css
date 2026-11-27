@@ -838,3 +838,17 @@ button {
     display: none;
   }
 }
+
+/* Clerk sign-in (auth.jsx), only when VITE_CLERK_PUBLISHABLE_KEY is set */
+.sign-in-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.account-button {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 20;
+}
