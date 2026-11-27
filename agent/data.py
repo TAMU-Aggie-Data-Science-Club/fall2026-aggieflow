@@ -157,8 +157,35 @@ def _atlas_hybrid_search(source: str, query: str, k: int) -> list[Passage]:
         for rank, p in enumerate(results):
             scores[p["id"]] = scores.get(p["id"], 0.0) + 1.0 / (RRF_K + rank + 1)
             by_id[p["id"]] = p
-    best = sorted(scores, key=lambda i: -scores[i])[:k]
-    return [by_id[i] for i in best]
+    merged = [by_id[i] for i in sorted(scores, key=lambda i: -scores[i])]
+    return _rerank(query, merged, k)
+
+
+RERANK_URL = "https://ai.mongodb.com/v1/rerank"
+RERANK_MODEL = "rerank-2.5"
+
+
+def _rerank(query: str, found: list[Passage], k: int) -> list[Passage]:
+    """The k passages Voyage's reranker (via Atlas) judges best answer the query.
+    Without VOYAGE_API_KEY, or if the call fails, keeps the order given."""
+    key = os.environ.get("VOYAGE_API_KEY")
+    if not key or len(found) <= 1:
+        return found[:k]
+    import requests
+
+    try:
+        resp = requests.post(
+            RERANK_URL,
+            headers={"Authorization": f"Bearer {key}"},
+            json={"query": query, "documents": [p["text"] for p in found],
+                  "model": RERANK_MODEL, "top_k": k},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return [found[r["index"]] for r in resp.json()["data"]]
+    except Exception as err:
+        log.warning("rerank failed (%s); using hybrid order", err)
+        return found[:k]
 
 
 def _atlas_course_candidates(dept: str, number: str) -> list[Passage]:
