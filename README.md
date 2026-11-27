@@ -8,10 +8,15 @@ The answers students need are scattered across various official and unofficial s
  
 ## Example questions
  
-1. "Best CSCE 120 prof/section?"
-2. "Which classes satisfy the KICD requirement?"
-3. "What's the easiest Science elective?"
-4. "Can I return a calculator checked out at West Campus Library to Evans?"
+1. "Who's the easiest CHEM 107 professor?"
+2. "How many Q-drops do I get?"
+3. "What are the prereqs for CSCE 121?"
+4. "Can I return a calculator I got at West Campus Library to Evans?"
+
+It also handles:
+
+- **Follow-ups:** it remembers the conversation, so "what about summer?" works after a Q-drop question.
+- **Clarifying questions:** when a name matches several professors, it asks which one you mean instead of guessing.
  
 ## Setup
 
@@ -88,12 +93,19 @@ Then open http://localhost:8000. Notes:
 | Evaluation | LangSmith, with LLM judges running on Groq |
 | Tooling | uv for packages, pytest, GitHub Actions CI |
 
-## Testing
+## Evaluation and testing
 
-Test-driven development was essential to keeping our agent reliable across iterations and in prod. The repo has 453 pytest tests: 259 offline and 194 live (these call real model APIs and run with `uv run pytest -m live`). The offline tests run on every pull request through GitHub Actions CI.
+The main focus of this project was evaluating the agent end to end: its answers, which tools it calls, and how well search finds the right passages. We based the approach on these guides:
+
+- [Anthropic: Demystifying evals for AI agents](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
+- [Google: Evaluating AI agents, moving past the vibe check](https://developers.googleblog.com/evaluating-ai-agents-moving-past-the-vibe-check/)
+- [LangChain: Agent evals at the run, trace and thread level](https://www.langchain.com/resources/agent-evals)
+- [DeepEval: Multi-turn evaluation](https://deepeval.com/guides/guides-multi-turn-evaluation)
+
+The agent passes 90.5% of the 179 eval questions. Full results are in [`eval/RESULTS.md`](eval/RESULTS.md), and the experiments that got us there are in [`eval/HISTORY.md`](eval/HISTORY.md).
+
+Offline tests run on every pull request through GitHub Actions CI. Live tests call real model APIs and run with `uv run pytest -m live`.
 
 ## Scope and limits
 
 We prioritized the core agent, so some planned features were deferred, the biggest being login (auth). Chats are multi-turn and kept per thread: in memory by default, or in Atlas for a week with `AGGIEFLOW_CHECKPOINTS=atlas`. There's no chat history list in the UI yet.
-
-The main focus of this project was thoroughly evaluating the agent: behavior, tool choice and retrieval. Eval results are in [`eval/RESULTS.md`](eval/RESULTS.md).
