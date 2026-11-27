@@ -116,13 +116,18 @@ def fetch():
 
     urls = sitemap_urls(response.content)[:MAX_PAGES]
     print(f"{len(urls)} pages to fetch")
-    pages, index = [], []
+    pages, index, failed = [], [], []
     for url in urls:
         time.sleep(REQUEST_DELAY_SECONDS)
         try:
             response = session.get(url, timeout=TIMEOUT_SECONDS)
         except requests.RequestException as err:
-            print(f"  failed, skipped: {url} ({type(err).__name__})")
+            print(f"  failed: {url} ({type(err).__name__})")
+            failed.append(url)
+            continue
+        if response.status_code in (403, 429) or response.status_code >= 500:
+            print(f"  failed ({response.status_code}): {url}")
+            failed.append(url)
             continue
         if response.status_code != 200 or not keep(response.url):
             print(f"  not a page ({response.status_code}), skipped: {url}")
@@ -132,6 +137,10 @@ def fetch():
         (PAGES_DIR / name).write_bytes(response.content)
         index.append({"url": response.url, "file": name, "fetched_at": fetched_at})
         pages.append((response.url, response.text, fetched_at))
+    if failed:
+        # load.py deletes passages missing from the file, so a partial run would wipe good ones
+        sys.exit(f"{len(failed)} of {len(urls)} pages failed, so libraries.jsonl was not changed. "
+                 "Try again later or from another network.")
     INDEX_FILE.write_text(json.dumps(index, indent=1), encoding="utf-8")
     print(f"Saved {len(pages)} pages")
     return pages

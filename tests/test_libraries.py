@@ -237,3 +237,30 @@ def test_passages_come_from_main_without_menus():
 def test_a_page_with_almost_no_text_is_skipped():
     html = "<html><body><main><h1>Appeal a charge</h1><p>Use this form.</p></main></body></html>"
     assert collect.build_passages([("https://library.tamu.edu/services/x.html", html, "2026-11-22T00:00:00Z")]) == []
+
+
+def test_a_run_with_failed_pages_changes_nothing(tmp_path, monkeypatch):
+    # load.py deletes passages missing from the file, so a partial run must not write one
+    sitemap = (b'<urlset><url><loc>https://library.tamu.edu/services/techbar.html</loc></url>'
+               b'<url><loc>https://library.tamu.edu/borrowing/returns.html</loc></url></urlset>')
+
+    class Response:
+        def __init__(self, url, status, content=b"<main>ok</main>"):
+            self.url, self.status_code, self.content, self.text = url, status, content, content.decode()
+
+    class Session:
+        headers = {}
+
+        def get(self, url, timeout):
+            if url == collect.SITEMAP_URL:
+                return Response(url, 200, sitemap)
+            return Response(url, 403 if "returns" in url else 200)
+
+    monkeypatch.setattr(collect.requests, "Session", Session)
+    monkeypatch.setattr(collect, "REQUEST_DELAY_SECONDS", 0)
+    monkeypatch.setattr(collect, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(collect, "PAGES_DIR", tmp_path / "pages")
+    monkeypatch.setattr(collect, "INDEX_FILE", tmp_path / "pages.json")
+    with pytest.raises(SystemExit, match="1 of 2 pages failed"):
+        collect.fetch()
+    assert not (tmp_path / "pages.json").exists()
