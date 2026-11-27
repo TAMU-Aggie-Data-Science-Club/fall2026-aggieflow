@@ -1,4 +1,12 @@
 import { Fragment, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { CircleAlertIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
+import {
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+} from "@/components/ai-elements/chain-of-thought";
 import {
   Conversation as ConversationLog,
   ConversationContent,
@@ -8,9 +16,9 @@ import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-e
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
+import { Question, QuestionOption, QuestionOptions, QuestionPrompt } from "@/components/ai-elements/question";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
-import { askAgentStreaming } from "./api.js";
+import { answerOf, chatTransport, textOf } from "./api.js";
 import GradeChart from "./GradeChart.jsx";
 
 // Our chips wrap onto new lines instead of AI Elements' default single scrolling row.
@@ -48,59 +56,33 @@ const FEATURES = [
   },
 ];
 
-let nextId = 1;
-
-/** Earlier turns that got an answer, as the API's history: oldest first. */
-function historyBefore(turns, index) {
-  return turns.slice(0, index).flatMap((t) =>
-    t.status === "done"
-      ? [
-          { role: "user", content: t.question },
-          { role: "assistant", content: t.answer },
-        ]
-      : [],
-  );
+/** The conversation as turns: each question with the assistant message that answers it
+ * (null until it starts). */
+function turnsOf(messages) {
+  const turns = [];
+  for (const m of messages) {
+    if (m.role === "user") turns.push({ id: m.id, question: textOf(m), reply: null });
+    else if (turns.length) turns.at(-1).reply = m;
+  }
+  return turns;
 }
 
 export default function App() {
-  const [turns, setTurns] = useState([]);
-  const conversation = useRef(0); // bumped by "New question" so a late answer is dropped
-  const threadId = useRef(null); // the server's id for this conversation, from its first answer
-  const pending = turns.some((t) => t.status === "pending");
-
-  async function run(id, question, history) {
-    const started = conversation.current;
-    try {
-      const onStep = (step) => {
-        if (conversation.current !== started) return;
-        setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, live: [...(t.live ?? []), step] } : t)));
-      };
-      const result = await askAgentStreaming(question, history, threadId.current, onStep);
-      if (conversation.current !== started) return;
-      threadId.current = result.threadId;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "done", ...result } : t)));
-    } catch (err) {
-      if (conversation.current !== started) return;
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "error", error: err.message } : t)));
-    }
-  }
+  const threadId = useRef(crypto.randomUUID()); // the server's thread for this conversation
+  const [transport] = useState(() => chatTransport(() => threadId.current));
+  const { messages, sendMessage, regenerate, setMessages, stop, status, error } = useChat({ transport, throttle: 50 });
+  const pending = status === "submitted" || status === "streaming";
+  const turns = turnsOf(messages);
 
   function ask(text) {
     const question = text.trim();
     if (!question || pending) return false;
-    const id = nextId++;
-    const history = historyBefore(turns, turns.length);
-    setTurns((ts) => [...ts, { id, question, status: "pending", live: [] }]);
-    run(id, question, history);
+    sendMessage({ text: question });
     return true;
   }
 
-  function retry(id) {
-    if (pending) return;
-    const index = turns.findIndex((t) => t.id === id);
-    const history = historyBefore(turns, index);
-    setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, status: "pending", error: undefined, live: [] } : t)));
-    run(id, turns[index].question, history);
+  function retry() {
+    if (!pending) regenerate();
   }
 
   /** Checkpoints: go back to just after turn `index`, dropping the answers after it. The
@@ -108,15 +90,15 @@ export default function App() {
    * kept turns as its history. */
   function restore(index) {
     if (pending) return;
-    conversation.current += 1;
-    threadId.current = null;
-    setTurns((ts) => ts.slice(0, index + 1));
+    threadId.current = crypto.randomUUID();
+    const reply = turns[index].reply;
+    setMessages(messages.slice(0, messages.indexOf(reply) + 1));
   }
 
   function newQuestion() {
-    conversation.current += 1;
-    threadId.current = null;
-    setTurns([]);
+    stop();
+    threadId.current = crypto.randomUUID();
+    setMessages([]);
   }
 
   return (
@@ -125,7 +107,7 @@ export default function App() {
       {turns.length === 0 ? (
         <Home onAsk={ask} />
       ) : (
-        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} onRestore={restore} />
+        <Conversation turns={turns} pending={pending} error={error} onAsk={ask} onRetry={retry} onRestore={restore} />
       )}
     </div>
   );
@@ -263,7 +245,7 @@ function FeatureIcon({ name }) {
   );
 }
 
-function Conversation({ turns, pending, onAsk, onRetry, onRestore }) {
+function Conversation({ turns, pending, error, onAsk, onRetry, onRestore }) {
   return (
     <main className="conversation">
       <header className="conversation-header">
@@ -272,29 +254,34 @@ function Conversation({ turns, pending, onAsk, onRetry, onRestore }) {
 
       <ConversationLog className="thread">
         <ConversationContent className="thread-inner">
-          {turns.map((turn, i) => (
-            <Fragment key={turn.id}>
-              <Turn
-                turn={turn}
-                retryDisabled={pending}
-                onRetry={() => onRetry(turn.id)}
-                onPick={i === turns.length - 1 && !pending ? onAsk : null}
-              />
-              {/* a checkpoint between answered turns: go back to here */}
-              {turn.status === "done" && i < turns.length - 1 && (
-                <Checkpoint className="checkpoint">
-                  <CheckpointIcon />
-                  <CheckpointTrigger
-                    disabled={pending}
-                    onClick={() => onRestore(i)}
-                    tooltip="Remove the answers after this one and ask from here"
-                  >
-                    Restore to here
-                  </CheckpointTrigger>
-                </Checkpoint>
-              )}
-            </Fragment>
-          ))}
+          {turns.map((turn, i) => {
+            const last = i === turns.length - 1;
+            const answered = answerOf(turn.reply) !== null;
+            return (
+              <Fragment key={turn.id}>
+                <Turn
+                  turn={turn}
+                  live={last && pending}
+                  error={last && !pending && !answered ? error?.message || UNANSWERED : !answered && !last ? UNANSWERED : null}
+                  onRetry={last ? onRetry : null}
+                  onPick={last && !pending ? onAsk : null}
+                />
+                {/* a checkpoint between answered turns: go back to here */}
+                {answered && !last && (
+                  <Checkpoint className="checkpoint">
+                    <CheckpointIcon />
+                    <CheckpointTrigger
+                      disabled={pending}
+                      onClick={() => onRestore(i)}
+                      tooltip="Remove the answers after this one and ask from here"
+                    >
+                      Restore to here
+                    </CheckpointTrigger>
+                  </Checkpoint>
+                )}
+              </Fragment>
+            );
+          })}
         </ConversationContent>
         <ConversationScrollButton aria-label="Scroll to the newest answer" />
       </ConversationLog>
@@ -309,46 +296,68 @@ function Conversation({ turns, pending, onAsk, onRetry, onRestore }) {
   );
 }
 
-function Turn({ turn, retryDisabled, onRetry, onPick }) {
+const UNANSWERED = "AggieFlow couldn't answer this one.";
+
+/** One question and its reply. `live`: the reply is still streaming. `error`: it never
+ * finished (shown instead of the reply). */
+function Turn({ turn, live, error, onRetry, onPick }) {
+  const parts = turn.reply?.parts ?? [];
+  const steps = parts.filter((p) => p.type === "dynamic-tool");
+  const answer = answerOf(turn.reply);
+  // The words the model is writing now: text after its last lookup (the checks may still change them).
+  const lastStep = parts.findLastIndex((p) => p.type === "dynamic-tool");
+  const draft = parts.slice(lastStep + 1).filter((p) => p.type === "text").map((p) => p.text).join("");
+  const asked = parts.find((p) => p.type === "data-question")?.data;
+  const grades = parts.filter((p) => p.type === "data-grade").map((p) => p.data);
+  const sources = parts.filter((p) => p.type === "source-url");
+
   return (
     <>
       <Message from="user" className="max-w-[80%] self-end">
         <MessageContent className="user-bubble">{turn.question}</MessageContent>
       </Message>
-      {turn.status === "pending" && (
+      {live && answer === null && (
         <div className="thinking-turn">
-          {turn.live?.length > 0 && <Steps steps={turn.live} running />}
-          <div className="thinking" role="status" aria-live="polite">
-            {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">{turn.live?.length ? "Looking things up…" : "Thinking…"}</Shimmer>}
-          </div>
+          {steps.length > 0 && <Steps steps={steps} live />}
+          {draft ? (
+            <MessageContent className="answer-text">
+              <MessageResponse {...PLAIN_MARKDOWN}>{draft}</MessageResponse>
+            </MessageContent>
+          ) : (
+            <div className="thinking" role="status" aria-live="polite">
+              {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">{steps.length ? "Looking things up…" : "Thinking…"}</Shimmer>}
+            </div>
+          )}
         </div>
       )}
-      {turn.status === "error" && (
+      {error && (
         <div className="error-turn" role="alert">
-          <p>{turn.error}</p>
-          <button type="button" className="retry" onClick={onRetry} disabled={retryDisabled}>
-            Try again
-          </button>
+          <p>{error}</p>
+          {onRetry && (
+            <button type="button" className="retry" onClick={onRetry}>
+              Try again
+            </button>
+          )}
         </div>
       )}
-      {turn.status === "done" && (
+      {answer !== null && (
         <Message from="assistant" className="answer max-w-full" aria-label="AggieFlow answer">
           <div className="answer-head">
             <Logo size={30} />
             <span className="answer-name">AggieFlow</span>
           </div>
-          {turn.steps.length > 0 && <Steps steps={turn.steps} />}
-          {turn.asked ? (
-            <Choices question={turn.asked} onPick={onPick} />
+          {steps.length > 0 && <Steps steps={steps} />}
+          {asked ? (
+            <Choices question={asked} onPick={onPick} />
           ) : (
             <MessageContent className="answer-text">
-              <MessageResponse {...PLAIN_MARKDOWN}>{turn.answer}</MessageResponse>
+              <MessageResponse {...PLAIN_MARKDOWN}>{answer}</MessageResponse>
             </MessageContent>
           )}
-          {turn.grades.map((chart) => (
+          {grades.map((chart) => (
             <GradeChart key={chart.course} chart={chart} />
           ))}
-          {turn.sources.length > 0 && <Sources sources={turn.sources} />}
+          {sources.length > 0 && <Sources sources={sources} />}
         </Message>
       )}
     </>
@@ -356,19 +365,19 @@ function Turn({ turn, retryDisabled, onRetry, onPick }) {
 }
 
 /** The agent asked which one the student means. Only the latest question's options can be
- * picked; typing a reply in the composer works too. */
+ * picked, and a pick is sent right away; typing a reply in the composer works too. */
 function Choices({ question, onPick }) {
   return (
-    <div className="choices">
-      <p>{question.prompt}</p>
+    <Question className="choices" disabled={!onPick} onSubmit={(e) => e.preventDefault()}>
+      <QuestionPrompt>{question.prompt}</QuestionPrompt>
       {question.options.length > 0 && (
-        <Suggestions className={SUGGESTIONS_WRAP} role="group" aria-label={question.prompt}>
+        <QuestionOptions aria-label={question.prompt}>
           {question.options.map((option) => (
-            <Suggestion key={option} suggestion={option} className={SUGGESTION_CHIP} disabled={!onPick} onClick={onPick} />
+            <QuestionOption key={option} value={option} role="button" variant="ghost" className="chip" onClick={() => onPick?.(option)} />
           ))}
-        </Suggestions>
+        </QuestionOptions>
       )}
-    </div>
+    </Question>
   );
 }
 
@@ -390,10 +399,10 @@ function Sources({ sources }) {
       </SourcesTrigger>
       <SourcesContent>
         {sources.map((s, i) => (
-          <Source key={s.source_url} href={s.source_url} className="source-link">
+          <Source key={s.url} href={s.url} className="source-link">
             <span className="source-n">{i + 1}</span>
             <span className="source-title">{s.title}</span>
-            <span className="source-site">{siteOf(s.source_url)}</span>
+            <span className="source-site">{siteOf(s.url)}</span>
           </Source>
         ))}
       </SourcesContent>
@@ -424,38 +433,43 @@ const TOOL_LABELS = {
 
 const ARG_LABELS = { course: "Course", professor: "Professor", query: "Searched for" };
 
-/** The lookups the agent ran for this answer, each one expandable to show what it asked. */
-/** The agent's lookups. `running`: the answer isn't in yet, so the latest one shows as running. */
-function Steps({ steps, running = false }) {
+/** What one lookup was for, in words: "Course info: CHEM 107" and its other arguments. */
+function describe(step) {
+  const args = Object.entries(step.input ?? {}).filter(([, v]) => v != null && v !== "");
+  const label = TOOL_LABELS[step.toolName] ?? step.toolName.replaceAll("_", " ");
+  const main = args[0]?.[1];
+  return {
+    label: main ? `${label}: ${main}` : label,
+    details: args.slice(1).map(([k, v]) => `${ARG_LABELS[k] ?? k}: ${v}`).join(" · "),
+  };
+}
+
+/** The agent's lookups as a chain of thought: open while it works, folded once it answers. */
+function Steps({ steps, live = false }) {
+  const count = `${steps.length} ${steps.length === 1 ? "lookup" : "lookups"}`;
   return (
-    <div className="steps">
-      {steps.map((step, i) => {
-        const args = Object.entries(step.args ?? {}).filter(([, v]) => v != null && v !== "");
-        const main = args[0]?.[1];
-        const label = TOOL_LABELS[step.name] ?? step.name.replaceAll("_", " ");
-        return (
-          <Tool key={i} className="step">
-            <ToolHeader
-              type="dynamic-tool"
-              toolName={step.name}
-              title={main ? `${label}: ${main}` : label}
-              state={running && i === steps.length - 1 ? "input-available" : step.error ? "output-error" : "output-available"}
+    <ChainOfThought key={live ? "live" : "done"} className="steps" defaultOpen={live}>
+      <ChainOfThoughtHeader>{live ? `Looking things up (${count})` : count}</ChainOfThoughtHeader>
+      <ChainOfThoughtContent>
+        {steps.map((step) => {
+          const { label, details } = describe(step);
+          const running = step.state === "input-available" || step.state === "input-streaming";
+          const failed = step.state === "output-error";
+          return (
+            <ChainOfThoughtStep
+              key={step.toolCallId}
+              icon={running ? Spinning : failed ? CircleAlertIcon : SearchIcon}
+              status={running ? "active" : "complete"}
+              label={failed ? `${label} (didn't work)` : label}
+              description={details || null}
             />
-            {args.length > 0 && (
-              <ToolContent className="step-content">
-                <dl>
-                  {args.map(([k, v]) => (
-                    <div key={k}>
-                      <dt>{ARG_LABELS[k] ?? k}</dt>
-                      <dd>{String(v)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </ToolContent>
-            )}
-          </Tool>
-        );
-      })}
-    </div>
+          );
+        })}
+      </ChainOfThoughtContent>
+    </ChainOfThought>
   );
+}
+
+function Spinning(props) {
+  return <LoaderCircleIcon {...props} className={`${props.className ?? ""} ${REDUCED_MOTION ? "" : "animate-spin"}`} />;
 }

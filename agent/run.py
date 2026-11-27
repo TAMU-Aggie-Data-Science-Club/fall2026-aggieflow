@@ -150,15 +150,26 @@ def answer(question: str, graph=None, metadata: dict | None = None,
 
 def answer_stream(question: str, graph=None, metadata: dict | None = None,
                   history: list[dict] | None = None, thread_id: str | None = None):
-    """answer(), as it happens (#142): yields ("step", {"name", "args"}) as the agent starts
-    each tool call, then ("result", the dict answer() returns). The run is the same one
-    answer() makes, checks included, so the result is identical; only the steps come early.
-    ask_user isn't a step: it comes back as the result's "question"."""
+    """answer(), as it happens (#142). Yields, in order as the agent works:
+      ("text", {"id", "delta"}): the model's words as it writes them. id is the model
+          call, so each round's text is its own piece. This is the model's draft: the
+          checks can still change it, so the result's "answer" is what to show at the end.
+      ("step", {"id", "name", "args"}): a tool call as the agent starts it.
+      ("output", {"id", "error"}): that tool call finished; error as in tool_calls().
+    then ("result", the dict answer() returns). The run is the same one answer() makes,
+    checks included, so the result is identical. ask_user isn't a step: it comes back as
+    the result's "question"."""
     graph, inputs, config = _start(question, graph, metadata, history, thread_id)
     state, interrupt = None, None
-    for mode, chunk in graph.stream(inputs, config=config, stream_mode=["updates", "values"]):
+    for mode, chunk in graph.stream(inputs, config=config, stream_mode=["updates", "values", "messages"]):
         if mode == "values":
             state = chunk
+            continue
+        if mode == "messages":
+            message, info = chunk
+            text = message.text if info.get("langgraph_node") == "agent" and message.type in ("ai", "AIMessageChunk") else ""
+            if text:
+                yield "text", {"id": message.id or "", "delta": text}
             continue
         for node, update in chunk.items():
             if node == "__interrupt__":  # paused on ask_user
@@ -168,7 +179,11 @@ def answer_stream(question: str, graph=None, metadata: dict | None = None,
             for message in messages if isinstance(messages, list) else [messages]:
                 for call in getattr(message, "tool_calls", None) or []:
                     if call["name"] != "ask_user":
-                        yield "step", {"name": call["name"], "args": call["args"]}
+                        yield "step", {"id": call["id"], "name": call["name"], "args": call["args"]}
+                if node == "tools" and getattr(message, "name", None) != "ask_user":
+                    content = message.content
+                    yield "output", {"id": message.tool_call_id,
+                                     "error": isinstance(content, str) and content.startswith("Error:")}
     yield "result", _result(state, interrupt)
 
 

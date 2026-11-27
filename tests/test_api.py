@@ -149,46 +149,72 @@ def test_chat_returns_the_question_when_the_agent_asks(client, monkeypatch):
 
 # --- /chat/stream (#142) ---------------------------------------------------------
 
-def parse_sse(text):
-    """[(event, data)] from a text/event-stream body."""
+def parse_stream(text):
+    """The parts of an AI SDK UI message stream body, ending in "[DONE]"."""
     import json
 
-    events = []
+    parts = []
     for block in text.strip().split("\n\n"):
-        fields = dict(line.split(": ", 1) for line in block.splitlines())
-        events.append((fields["event"], json.loads(fields["data"])))
-    return events
+        data = block.removeprefix("data: ")
+        parts.append(data if data == "[DONE]" else json.loads(data))
+    return parts
 
 
 def fake_answer_stream(question, history=None, metadata=None, thread_id=None):
-    yield "step", {"name": "search_student_rules", "args": {"query": "q drops"}}
-    yield "step", {"name": "search_student_rules", "args": {"query": "q drop limit"}}
+    yield "text", {"id": "m1", "delta": "Let me "}
+    yield "text", {"id": "m1", "delta": "check."}
+    yield "step", {"id": "c1", "name": "search_student_rules", "args": {"query": "q drops"}}
+    yield "step", {"id": "c2", "name": "search_student_rules", "args": {"query": "q drop limit"}}
+    yield "output", {"id": "c1", "error": False}
+    yield "output", {"id": "c2", "error": True}
+    yield "text", {"id": "m2", "delta": "Four."}
     yield "result", fake_answer(question)
 
 
-def test_chat_stream_sends_each_step_then_the_same_reply_as_chat(client, monkeypatch):
+def test_chat_stream_is_a_ui_message_stream_ending_in_the_same_answer_as_chat(client, monkeypatch):
     monkeypatch.setattr(api.main, "answer", fake_answer)
     monkeypatch.setattr(api.main, "answer_stream", fake_answer_stream)
     thread = str(uuid.uuid4())
     r = client.post("/chat/stream", json={"question": "how many q drops do i get", "thread_id": thread})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/event-stream")
-    events = parse_sse(r.text)
-    assert [e for e, _ in events] == ["step", "step", "done"]
-    assert events[0][1] == {"name": "search_student_rules", "args": {"query": "q drops"}}
+    assert r.headers["x-vercel-ai-ui-message-stream"] == "v1"
+    parts = parse_stream(r.text)
+    assert [p if p == "[DONE]" else p["type"] for p in parts] == [
+        "start", "text-start", "text-delta", "text-delta", "text-end",
+        "tool-input-available", "tool-input-available", "tool-output-available", "tool-output-error",
+        "text-start", "text-delta", "text-end",
+        "source-url", "data-answer", "finish", "[DONE]"]
+    assert parts[5] == {"type": "tool-input-available", "toolCallId": "c1", "toolName": "search_student_rules",
+                        "input": {"query": "q drops"}, "dynamic": True}
     plain = client.post("/chat", json={"question": "how many q drops do i get", "thread_id": thread}).json()
-    assert events[-1][1] == plain
+    assert parts[12] == {"type": "source-url", "sourceId": URL, "url": URL, "title": "Rule 1"}
+    assert parts[13] == {"type": "data-answer", "data": {"text": plain["answer"]}}
 
 
-def test_chat_stream_reports_a_failure_as_an_error_event(client, monkeypatch):
+def test_chat_stream_sends_grade_charts_and_the_agents_question(client, monkeypatch):
+    asked = {"prompt": "Which Professor Leyk?", "options": ["Teresa Leyk", "Zbigniew Leyk"]}
+
+    def stream(question, **kwargs):
+        yield "result", {**grade_answer(question), "question": asked}
+
+    monkeypatch.setattr(api.main, "answer_stream", stream)
+    parts = parse_stream(client.post("/chat/stream", json={"question": "chem 107"}).text)
+    grade = next(p for p in parts if p != "[DONE]" and p["type"] == "data-grade")
+    assert grade["id"] == "CHEM 107" and grade["data"]["course"] == "CHEM 107"
+    assert {"type": "data-question", "data": asked} in parts
+
+
+def test_chat_stream_reports_a_failure_as_an_error_part(client, monkeypatch):
     def broken(question, **kwargs):
-        yield "step", {"name": "search_student_rules", "args": {}}
+        yield "step", {"id": "c1", "name": "search_student_rules", "args": {}}
         raise RuntimeError("model down")
 
     monkeypatch.setattr(api.main, "answer_stream", broken)
-    events = parse_sse(client.post("/chat/stream", json={"question": "q drops?"}).text)
-    assert [e for e, _ in events] == ["step", "error"]
-    assert events[-1][1] == {"detail": "AggieFlow can't answer right now. Try again in a minute."}
+    parts = parse_stream(client.post("/chat/stream", json={"question": "q drops?"}).text)
+    assert parts[-2:] == [{"type": "error", "errorText": "AggieFlow can't answer right now. Try again in a minute."},
+                          "[DONE]"]
+    assert "model down" not in str(parts)
 
 
 def test_chat_stream_validates_like_chat(client):
