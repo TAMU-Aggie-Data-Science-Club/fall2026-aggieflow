@@ -113,19 +113,6 @@ uv run python eval/run_eval.py --mode keyword --repetitions 3
   - `--no-upload` runs locally without a LangSmith key.
 - **Groq budget:** on the free tier, a full run (about 129 tasks × 3 runs, plus 4 judge calls each) needs far more than one key's 200k tokens a day. Run a file or two at a time, or use a paid tier.
 
-### Judging saved answers
-
-`eval/judge_saved.py` runs all four judges on answers the agent already gave, so you don't run the agent again. You need only `GROQ_API_KEY`.
-
-- **The answers:** `eval/saved/pass3-aa05068.jsonl`. These are the 40 sample questions from the pass^3 run (commit `aa05068`, first run), with the passages the agent retrieved.
-- **The questions:** `eval/sample-40.txt`, split into `eval/sample-40-part1.txt` to `part4.txt` with 10 questions each, one per member. The references come from `eval/questions/`.
-
-```bash
-uv run python eval/judge_saved.py judge --ids eval/sample-40-part1.txt
-```
-
-It writes `eval/results/judged-part1.jsonl`. Merge the four parts with `eval/summarize.py eval/results/judged-*.jsonl`.
-
 ### Merging and comparing results
 
 When a run is split across members, each with their own Groq key, merge everyone's `--out` files into one summary:

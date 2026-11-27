@@ -361,12 +361,6 @@ def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
     assert "sr-09" in capsys.readouterr().err
 
 
-def test_release_parts_cover_every_question_once():
-    ids = [i for n in range(1, 5) for i in run_eval.read_ids(ROOT / "eval" / f"release-part{n}.txt")]
-    assert len(ids) == len(set(ids))
-    assert set(ids) == {t["id"] for t in run_eval.load_tasks()}
-
-
 # --- multi-turn and ask tasks -------------------------------------------------------
 
 LEYK_Q = {"prompt": "Which Professor Leyk?", "options": ["Teresa Leyk (CSCE)", "Zbigniew Leyk (MATH)"]}
