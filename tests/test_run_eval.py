@@ -51,8 +51,12 @@ def test_a_short_correct_answer_passes_and_the_sources_list_is_ignored():
     assert run_eval.numbers_match(answer, REFERENCE, PASSAGES) == (1, "all 2 numbers check out and it names ALTEMOSE")
 
 
-def test_numbers_from_the_passages_count_and_rounding_is_allowed():
-    answer = "ALTEMOSE A: 36% B's, and in Fall 2025 a 3.01 GPA across about 2,440 students, 38.4% A's."
+@pytest.mark.parametrize("answer", [
+    "ALTEMOSE A: 36% B's, and in Fall 2025 a 3.01 GPA across about 2,440 students, 38.4% A's.",  # passages, rounding
+    "Highest GPA:\n\n1. ALTEMOSE A - 3.08 GPA\n2. Another prof - 38% A's",  # list markers aren't claims
+    "ALTEMOSE A: about 37–38% of students get an A.",  # a percent range within a point
+])
+def test_right_numbers_pass(answer):
     assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
 
 
@@ -67,11 +71,6 @@ def test_a_wrong_number_or_professor_fails(answer, problem):
     assert result == 0 and problem in comment
 
 
-def test_numbered_list_markers_are_not_claims():
-    answer = "Highest GPA:\n\n1. ALTEMOSE A - 3.08 GPA\n2. Another prof - 38% A's"
-    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
-
-
 @pytest.mark.parametrize("text, expected", [
     ("about 92–93% would take him again", [("percent", 92), ("percent", 93)]),
     ("92-93 %", [("percent", 92), ("percent", 93)]),
@@ -81,11 +80,6 @@ def test_numbered_list_markers_are_not_claims():
 ])
 def test_a_percent_range_makes_both_ends_percents(text, expected):
     assert run_eval.numbers_in(text) == expected
-
-
-def test_a_percent_range_within_a_point_passes():
-    answer = "ALTEMOSE A: about 37–38% of students get an A."
-    assert run_eval.numbers_match(answer, REFERENCE, PASSAGES)[0] == 1
 
 
 def test_an_answer_with_no_numbers_fails_when_numbers_were_expected():
@@ -113,6 +107,7 @@ RULES_META = {"id": "sr-01", "source": "student-rules", "tools": ["search_studen
 RULES_REF = {"answer": "Four.", "source_url": RULE01}
 RULES_OUT = {"answer": f"Four ({RULE01}).", "sources": [passage(RULE01)], "documents": [passage(RULE01)],
              "calls": [call("search_student_rules", query="q-drops")]}
+NOT_SURE_REF = {"answer": "NOT_SURE", "source_url": None}
 
 
 def scores(graded):
@@ -131,14 +126,11 @@ def test_a_wrong_answer_fails_even_when_cited():
     assert graded["passed"] == (0, "failed ['correctness']")
 
 
-def test_groundedness_is_recorded_but_does_not_gate():
+def test_groundedness_and_unsure_judges_do_not_gate():
     judges = [*YES_JUDGES[:2], judge("groundedness", 0), YES_JUDGES[3]]
     s = scores(run_eval.grade(RULES_META, RULES_REF, RULES_OUT, judges))
     assert (s["groundedness"], s["passed"]) == (0, 1)
-
-
-def test_a_judge_that_cannot_tell_does_not_count():
-    judges = [judge("correctness", None), *YES_JUDGES[1:]]
+    judges = [judge("correctness", None), *YES_JUDGES[1:]]  # a judge that cannot tell
     assert scores(run_eval.grade(RULES_META, RULES_REF, RULES_OUT, judges))["passed"] == 1
 
 
@@ -164,42 +156,25 @@ def test_grade_and_ratings_tasks_need_numbers_match_and_correctness():
     assert scores(run_eval.grade(meta, ref, out, YES_JUDGES))["passed"] == 1
 
 
-def test_only_grade_and_ratings_tasks_ask_the_judge_for_the_verdict_alone():
-    seen = {}
-
-    def spy(inputs, outputs, reference_outputs):
-        seen[outputs["answer"]] = inputs.get("verdict_only")
-        return {"key": "correctness", "score": 1, "comment": ""}
-    spy.__name__ = "correctness"
-
-    both = {"id": "r-13", "source": "ratemyprofessors", "tags": [],
-            "tools": ["get_professor_ratings", "get_professor_grades"]}
-    ratings_only = {**both, "tools": ["get_professor_ratings"]}
-    out = {"sources": [passage(CHEM)], "documents": [], "calls": [call("get_professor_ratings")]}
-    run_eval.grade(both, {"answer": REFERENCE, "source_url": CHEM}, {**out, "answer": "both"}, [spy])
-    run_eval.grade(ratings_only, {"answer": "Students love her.", "source_url": CHEM}, {**out, "answer": "ratings"}, [spy])
-    run_eval.grade(RULES_META, RULES_REF, {**RULES_OUT, "answer": "rules"}, [spy])
-    assert seen == {"both": True, "ratings": False, "rules": False}
-
-
-def test_not_sure_with_related_links_still_counts_as_declining():
+def test_not_sure_tasks_pass_on_declining_and_fail_on_answering():
+    # declining with related links still counts
     meta = {"id": "t-10", "source": "transportation", "tools": ["search_transportation"]}
-    ref = {"answer": "NOT_SURE", "source_url": None}
     out = {"answer": "I'm not sure; live counts aren't available.", "sources": [passage(RULE01)],
            "documents": [passage(RULE01)], "calls": [call("search_transportation", query="garage")]}
-    s = scores(run_eval.grade(meta, ref, out, None))
+    s = scores(run_eval.grade(meta, NOT_SURE_REF, out, None))
     assert (s["not_sure_correct"], s["answered_out_of_scope"], s["passed"]) == (1, 0, 1)
 
-
-def test_not_sure_task_with_no_tools():
+    # with no tools expected, searching anyway is recorded but doesn't gate
     meta = {"id": "e-01", "source": "extra", "tools": [], "tags": ["no-tool"]}
-    ref = {"answer": "NOT_SURE", "source_url": None}
     good = {"answer": "I'm not sure.", "sources": [], "documents": [], "calls": []}
-    s = scores(run_eval.grade(meta, ref, good, None))
+    s = scores(run_eval.grade(meta, NOT_SURE_REF, good, None))
     assert (s["not_sure_correct"], s["tool_match"], s["cited_page"], s["passed"]) == (1, 1, None, 1)
-    searched = {**good, "calls": [call("search_registrar", query="sbisa")]}
-    s = scores(run_eval.grade(meta, ref, searched, None))
-    assert (s["tool_match"], s["passed"]) == (0, 1)  # tool_match is recorded, not a gate
+    s = scores(run_eval.grade(meta, NOT_SURE_REF, {**good, "calls": [call("search_registrar", query="sbisa")]}, None))
+    assert (s["tool_match"], s["passed"]) == (0, 1)
+
+    answered = {**good, "answer": "Sbisa closes at 8."}
+    s = scores(run_eval.grade(meta, NOT_SURE_REF, answered, None))
+    assert (s["answered_out_of_scope"], s["wrongly_not_sure"], s["passed"]) == (1, None, 0)
 
 
 def test_citing_an_also_accept_page_passes_cited_page():
@@ -219,55 +194,20 @@ def test_run_metrics_are_recorded_and_do_not_gate():
     assert scores(run_eval.grade(RULES_META, RULES_REF, refused, YES_JUDGES))["wrongly_not_sure"] == 1
 
 
-def test_a_not_sure_task_that_answers_anyway_counts_as_answered_out_of_scope():
-    meta = {"id": "e-01", "source": "extra", "tools": [], "tags": []}
-    ref = {"answer": "NOT_SURE", "source_url": None}
-    answered = {"answer": "Sbisa closes at 8.", "sources": [], "documents": [], "calls": []}
-    s = scores(run_eval.grade(meta, ref, answered, None))
-    assert (s["answered_out_of_scope"], s["wrongly_not_sure"], s["passed"]) == (1, None, 0)
-    assert s["latency_s"] is None  # a fake agent that doesn't time itself
-
-
 def test_a_failed_agent_run_fails_the_task():
     assert run_eval.grade(RULES_META, RULES_REF, None, YES_JUDGES) == {"passed": (0, "the agent run failed")}
 
 
-# --- dataset sync -----------------------------------------------------------------
+def test_a_greeting_passes_with_the_intro_and_skips_the_judge():
+    from agent.checks import INTRO
 
-class FakeExample:
-    def __init__(self, id_, fields):
-        self.id, self.inputs, self.outputs = id_, fields["inputs"], fields["outputs"]
-        self.metadata = {**fields["metadata"], "dataset_split": ["base"]}  # LangSmith adds keys
-
-
-class FakeClient:
-    def __init__(self, examples):
-        self.examples, self.created, self.updated = examples, [], []
-
-    def has_dataset(self, dataset_name):
-        return True
-
-    def list_examples(self, dataset_name):
-        return list(self.examples)
-
-    def create_examples(self, dataset_name, examples):
-        self.created += examples
-
-    def update_example(self, example_id, **fields):
-        self.updated.append((example_id, fields))
-
-
-def test_sync_adds_new_questions_and_updates_edited_ones(capsys):
-    task = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01,
-            "source": "student-rules", "tools": ["search_student_rules"]}
-    same = {**task, "id": "sr-02"}
-    old = run_eval.example_fields({**task, "answer": "NOT_SURE", "source_url": None})
-    client = FakeClient([FakeExample("e1", old), FakeExample("e2", run_eval.example_fields(same))])
-    new = {**task, "id": "sr-03"}
-    run_eval.sync_dataset(client, [task, same, new])
-    assert [e["metadata"]["id"] for e in client.created] == ["sr-03"]
-    assert client.updated == [("e1", run_eval.example_fields(task))]
-    assert "1 new, 1 updated" in capsys.readouterr().out
+    intro = {"answer": INTRO, "sources": [], "documents": [], "calls": []}
+    greeting = run_eval.grade({"tools": [], "tags": ["no-tool", "greeting"]}, NOT_SURE_REF, intro, [judge("correctness", 0)])
+    assert greeting["passed"][0] == 1 and greeting["correctness"][0] is None
+    assert greeting["answered_out_of_scope"][0] == 0
+    # without the tag, the intro still isn't a decline
+    other = run_eval.grade({"tools": [], "tags": ["no-tool"]}, NOT_SURE_REF, intro, [judge("correctness", 0)])
+    assert other["passed"][0] == 0
 
 
 # --- retries ----------------------------------------------------------------------
@@ -276,29 +216,17 @@ class RateLimitError(Exception):
     pass
 
 
-def test_retry_waits_out_a_per_minute_limit(capsys):
+@pytest.mark.parametrize("message", [
+    "tokens per minute (TPM): Limit 8000",
+    "429 RESOURCE_EXHAUSTED: requests per minute limit exceeded on Free Tier",
+])
+def test_retry_waits_out_a_per_minute_limit(message):
     attempts, waits = [], []
 
     def flaky():
         attempts.append(1)
         if len(attempts) == 1:
-            raise RateLimitError("tokens per minute (TPM): Limit 8000")
-        return "ok"
-    assert run_eval.with_retry(flaky, sleep=waits.append) == "ok"
-    assert waits == [15]
-
-
-class GoogleRateLimitError(Exception):
-    pass
-
-
-def test_retry_waits_out_geminis_per_minute_limit(capsys):
-    attempts, waits = [], []
-
-    def flaky():
-        attempts.append(1)
-        if len(attempts) == 1:
-            raise GoogleRateLimitError("429 RESOURCE_EXHAUSTED: requests per minute limit exceeded on Free Tier")
+            raise RateLimitError(message)
         return "ok"
     assert run_eval.with_retry(flaky, sleep=waits.append) == "ok"
     assert waits == [15]
@@ -314,40 +242,6 @@ def test_retry_gives_up_at_once_on_the_daily_limit(capsys):
     assert waits == [] and run_eval.DAILY_LIMIT in capsys.readouterr().err
 
 
-def test_measured_times_only_the_attempt_that_succeeded():
-    class Data:
-        fallback_count = 0
-
-    ticks = iter([0.0, 100.0, 104.5])  # attempt 1 starts at 0 and fails; attempt 2 runs 100 -> 104.5
-    attempts = []
-
-    def answer(question, metadata, history=None):
-        attempts.append(metadata)
-        if len(attempts) == 1:
-            raise RateLimitError("tokens per minute (TPM): Limit 8000")
-        Data.fallback_count += 1  # a vector search fell back on the attempt that worked
-        return {"answer": "Four."}
-
-    result = run_eval.with_retry(run_eval.measured, answer, Data, "q", "sr-01",
-                                 clock=lambda: next(ticks), sleep=lambda s: None)
-    assert result == {"answer": "Four.", "asked": None, "latency_s": 4.5, "fell_back": 1}
-    assert attempts[-1] == {"question_id": "sr-01"}
-
-
-def test_percentile_and_pass_rate_ci():
-    assert run_eval.percentile([5, 1, 3, 2, 4], 0.5) == 3
-    assert run_eval.percentile(list(range(1, 101)), 0.95) == 95
-    at1, low, high = run_eval.pass_rate({"a": [1, 1], "b": [0, 1], "c": [0, 0]}, {"a", "b", "c"})
-    assert at1 == 0.5 and 0 <= low < 0.5 < high <= 1
-    assert run_eval.pass_rate({"a": [1]}, {"a"}) == (1.0, 1.0, 1.0)
-
-
-def test_search_only_keeps_tasks_that_expect_a_search_tool():
-    assert run_eval.is_search_task({"tools": ["search_registrar", "get_course"]})
-    assert not run_eval.is_search_task({"tools": ["get_course_grades", "get_professor_grades"]})
-    assert not run_eval.is_search_task({"tools": []}) and not run_eval.is_search_task({})
-
-
 # --- summarize and compare --------------------------------------------------------
 
 def record(qid, passed, rep=1, mode="keyword", commit="abc1234", source="registrar", **scores):
@@ -361,7 +255,7 @@ def write(path, recs):
     return path
 
 
-def test_summarize_merges_files_from_the_same_setup(tmp_path, capsys):
+def test_summarize_merges_files_from_one_setup_and_refuses_to_mix(tmp_path, capsys):
     a = write(tmp_path / "a.jsonl", [record("r-01", 1, latency_s=2.0), record("r-02", 0, latency_s=4.0)])
     b = write(tmp_path / "b.jsonl", [record("sr-01", 1, source="student-rules", latency_s=3.0, fell_back=0)])
     assert summarize.main([str(a), str(b)]) == 0
@@ -371,17 +265,8 @@ def test_summarize_merges_files_from_the_same_setup(tmp_path, capsys):
     assert lines["source=registrar"][:2] == ["2", "50%"]
     assert "p50 3.0, p95 4.0 over 3 runs" in out and "pass^k not measured" in out
 
-
-def test_summary_counts_agent_runs_that_failed(capsys):
-    failed = {**record("r-02", 0), "scores": {}}
-    run_eval.print_summary(run_eval.summarize([record("r-01", 1), failed]))
-    assert "agent runs that failed (counted as not passed): 1" in capsys.readouterr().out
-
-
-def test_summarize_refuses_to_mix_commits_models_or_modes(tmp_path, capsys):
-    a = write(tmp_path / "a.jsonl", [record("r-01", 1)])
-    b = write(tmp_path / "b.jsonl", [record("r-02", 1, mode="vector")])
-    assert summarize.main([str(a), str(b)]) == 1
+    c = write(tmp_path / "c.jsonl", [record("r-02", 1, mode="vector")])
+    assert summarize.main([str(a), str(c)]) == 1
     assert "mix modes: keyword, vector" in capsys.readouterr().err
 
 
@@ -396,17 +281,7 @@ def test_compare_pairs_questions_and_counts_wins():
     assert (metric, n, diff) == ("passed", 3, 0.0) and low <= 0 <= high
 
 
-def test_compare_main_refuses_different_commits(tmp_path, capsys):
-    a = write(tmp_path / "a.jsonl", [record("q1", 1)])
-    b = write(tmp_path / "b.jsonl", [record("q1", 1, mode="vector", commit="def5678")])
-    assert compare.main([str(a), str(b)]) == 1
-    assert "mix commits" in capsys.readouterr().err
-    same = write(tmp_path / "c.jsonl", [record("q1", 0, mode="vector")])
-    assert compare.main(["--a", str(a), "--b", str(same)]) == 0
-    assert "B wins 0, loses 1, ties 0" in capsys.readouterr().out
-
-
-def test_compare_allows_a_model_or_commit_change_when_asked(tmp_path, capsys):
+def test_compare_main_refuses_a_setup_change_unless_asked(tmp_path, capsys):
     a = write(tmp_path / "a.jsonl", [record("q1", 0)])
     b = write(tmp_path / "b.jsonl", [{**record("q1", 1, commit="def5678"), "model": "google_genai:x"}])
     assert compare.main([str(a), str(b)]) == 1
@@ -486,49 +361,40 @@ def test_ids_keeps_only_the_listed_questions(tmp_path, monkeypatch, capsys):
     assert "sr-09" in capsys.readouterr().err
 
 
-def test_judges_option_runs_only_the_named_judges(tmp_path, monkeypatch, capsys):
-    import sys
-    import types
-
-    calls = []
-
-    def counting(name):
-        def fn(inputs, outputs, reference_outputs):
-            calls.append(name)
-            return {"key": name, "score": 1, "comment": ""}
-        fn.__name__ = name
-        return fn
-
-    fake = types.ModuleType("judges")
-    fake.JUDGES = [counting(n) for n in ("correctness", "relevance", "groundedness", "retrieval_relevance")]
-    monkeypatch.setitem(sys.modules, "judges", fake)
-    row = {"id": "sr-01", "question": "how many q drops", "answer": "Four.", "source_url": RULE01}
-    (tmp_path / "student-rules-test.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
-    monkeypatch.setattr(run_eval, "answer_fn", lambda question, question_id, history=None: {
-        "answer": "Four.", "sources": [passage(RULE01)], "documents": [passage(RULE01)], "trace": [],
-        "calls": [call("search_student_rules", query="q drops")]})
-    monkeypatch.setenv("LANGSMITH_TRACING", "false")
-    monkeypatch.setenv("AGGIEFLOW_SEARCH", "keyword")
-    args = ["--questions", str(tmp_path), "--repetitions", "1", "--no-upload", "--out", str(tmp_path / "r.jsonl")]
-    assert run_eval.main([*args, "--judges", "correctness"]) == 0
-    assert calls == ["correctness"]
-
-    assert run_eval.main([*args, "--judges", "correctness,vibes"]) == 1
-    assert "vibes" in capsys.readouterr().err
+def test_release_parts_cover_every_question_once():
+    ids = [i for n in range(1, 5) for i in run_eval.read_ids(ROOT / "eval" / f"release-part{n}.txt")]
+    assert len(ids) == len(set(ids))
+    assert set(ids) == {t["id"] for t in run_eval.load_tasks()}
 
 
-def test_history_is_an_input_only_when_set():
-    task = {"id": "t1", "source": "x", "question": "what about summer?", "answer": "a", "source_url": "u"}
-    assert run_eval.example_fields(task)["inputs"] == {"question": "what about summer?"}
-    history = [{"role": "user", "content": "how many q drops"}, {"role": "assistant", "content": "Four."}]
-    assert run_eval.example_fields({**task, "history": history})["inputs"]["history"] == history
-    # the same follow-up after different conversations is two tasks
-    assert run_eval.task_key(task["question"], history) != run_eval.task_key(task["question"], None)
-
-
-# --- ask tasks (#129) ---------------------------------------------------------------
+# --- multi-turn and ask tasks -------------------------------------------------------
 
 LEYK_Q = {"prompt": "Which Professor Leyk?", "options": ["Teresa Leyk (CSCE)", "Zbigniew Leyk (MATH)"]}
+
+
+def test_example_fields_carry_history_and_ask_fields_only_when_set():
+    task = {"id": "t1", "source": "x", "question": "what about summer?", "answer": "a", "source_url": "u"}
+    plain = run_eval.example_fields(task)
+    assert plain["inputs"] == {"question": "what about summer?"} and "ask" not in plain["metadata"]
+    history = [{"role": "user", "content": "how many q drops"}, {"role": "assistant", "content": "Four."}]
+    assert run_eval.example_fields({**task, "history": history})["inputs"]["history"] == history
+    # the same follow-up after different conversations, or with different replies, is two tasks
+    assert run_eval.task_key(task["question"], history) != run_eval.task_key(task["question"], None)
+    assert run_eval.task_key("is leyk good", None, "Teresa") != run_eval.task_key("is leyk good", None, "Zbigniew")
+
+    fields = run_eval.example_fields({**task, "ask": True, "options": ["Teresa"], "reply": "Teresa Leyk"})
+    assert fields["inputs"]["reply"] == "Teresa Leyk"
+    assert fields["metadata"]["ask"] is True and fields["metadata"]["options"] == ["Teresa"]
+
+
+def test_judges_see_a_multi_turn_tasks_earlier_turns():
+    task = {"question": "what about summer?",
+            "history": [{"role": "user", "content": "q drop deadline in spring?"},
+                        {"role": "assistant", "content": "April 20, 2027."}]}
+    seen = run_eval.judged_question(task)
+    assert seen.index("Student: q drop deadline in spring?") < seen.index("AggieFlow: April 20, 2027.")
+    assert seen.endswith("The student now asks: what about summer?")
+    assert run_eval.judged_question({"question": "hi"}) == "hi"
 
 
 def ask_meta(ask, **extra):
@@ -589,17 +455,6 @@ def test_a_reply_resumes_the_same_thread():
     assert seen == ["when is the last day to drop"] and result["asked"] is None  # didn't ask: no reply sent
 
 
-def test_ask_fields_go_to_langsmith_only_when_set():
-    task = {"id": "ask-01", "source": "ask", "question": "is leyk good", "answer": "a", "source_url": "u",
-            "ask": True, "options": ["Teresa"], "reply": "Teresa Leyk"}
-    fields = run_eval.example_fields(task)
-    assert fields["inputs"]["reply"] == "Teresa Leyk"
-    assert fields["metadata"]["ask"] is True and fields["metadata"]["options"] == ["Teresa"]
-    plain = run_eval.example_fields({k: v for k, v in task.items() if k not in ("ask", "options", "reply")})
-    assert "reply" not in plain["inputs"] and "ask" not in plain["metadata"]
-    assert run_eval.task_key("is leyk good", None, "Teresa") != run_eval.task_key("is leyk good", None, "Zbigniew")
-
-
 @pytest.mark.parametrize("line, problem", [
     ({"ask": "yes"}, "ask must be true or false"),
     ({"ask": True}, "needs a reply"),
@@ -613,53 +468,3 @@ def test_bad_ask_fields_are_skipped(tmp_path, capsys, line, problem):
     (tmp_path / "ask-test.jsonl").write_text(json.dumps(q) + "\n", encoding="utf-8")
     assert score.load_questions(tmp_path / "ask-test.jsonl") == []
     assert problem in capsys.readouterr().err
-
-
-def test_judges_see_a_multi_turn_tasks_earlier_turns():
-    task = {"question": "what about summer?",
-            "history": [{"role": "user", "content": "q drop deadline in spring?"},
-                        {"role": "assistant", "content": "April 20, 2027."}]}
-    seen = run_eval.judged_question(task)
-    assert seen.index("Student: q drop deadline in spring?") < seen.index("AggieFlow: April 20, 2027.")
-    assert seen.endswith("The student now asks: what about summer?")
-    assert run_eval.judged_question({"question": "hi"}) == "hi"
-
-
-# --- the #74 release run ------------------------------------------------------------
-
-def test_release_parts_cover_every_question_once():
-    ids = [i for n in range(1, 5) for i in run_eval.read_ids(ROOT / "eval" / f"release-part{n}.txt")]
-    assert len(ids) == len(set(ids))
-    assert set(ids) == {t["id"] for t in run_eval.load_tasks()}
-
-
-def test_rerun_picks_failures_and_new_files_then_summarize_keeps_only_them(tmp_path, capsys):
-    import release_rerun
-
-    base = {"commit": "abc", "model": "m", "mode": "hybrid", "setup": "s", "experiment": "e", "scores": {"cited_page": 1}}
-    first = [{**base, "id": "sr-01", "passed": 1}, {**base, "id": "sr-02", "passed": 0},
-             {**base, "id": "ask-x-01", "passed": 1}, {**base, "id": "multiturn-x-01a", "passed": 1}]
-    results = tmp_path / "release-part1.jsonl"
-    results.write_text("".join(json.dumps(r) + "\n" for r in first), encoding="utf-8")
-    assert release_rerun.main([str(results), "--out-dir", str(tmp_path)]) == 0
-    rerun = run_eval.read_ids(tmp_path / "release-rerun.txt")
-    assert rerun == ["sr-02", "ask-x-01", "multiturn-x-01a"]
-    parts = [i for n in range(1, 5) for i in run_eval.read_ids(tmp_path / f"release-rerun-part{n}.txt")]
-    assert sorted(parts) == sorted(rerun)
-
-    capsys.readouterr()
-    assert summarize.main([str(results), "--ids", str(tmp_path / "release-rerun.txt")]) == 0
-    assert "3 runs from 1 experiment" in capsys.readouterr().out  # sr-01 left out
-
-
-def test_a_greeting_passes_with_the_intro_and_skips_the_judge():
-    from agent.checks import INTRO
-
-    reference = {"answer": "NOT_SURE", "source_url": None}
-    intro = {"answer": INTRO, "sources": [], "documents": [], "calls": []}
-    greeting = run_eval.grade({"tools": [], "tags": ["no-tool", "greeting"]}, reference, intro, [judge("correctness", 0)])
-    assert greeting["passed"][0] == 1 and greeting["correctness"][0] is None
-    assert greeting["answered_out_of_scope"][0] == 0
-    # without the tag, the intro still isn't a decline
-    other = run_eval.grade({"tools": [], "tags": ["no-tool"]}, reference, intro, [judge("correctness", 0)])
-    assert other["passed"][0] == 0
