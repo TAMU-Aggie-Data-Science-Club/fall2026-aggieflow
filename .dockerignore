@@ -1,0 +1,11 @@
+# Kept out of the Docker build (and so out of the image): keys, data and local builds.
+**/.env
+**/.env.*
+data/
+.git/
+.venv/
+**/__pycache__/
+web/node_modules/
+web/dist/
+eval/results/
+.planning/
