@@ -165,7 +165,8 @@ def test_serves_the_built_ui_at_the_root(tmp_path, reload_api):
     client = reload_api(tmp_path)
     assert "AggieFlow" in client.get("/").text
     assert client.get("/assets/app.js").text == "console.log(1)"
-    # the API's routes still come first
+    # the API's routes still come first: the mount at / catches every path, so it must be last
+    assert api.main.app.routes[-1].name == "web"
     assert client.get("/health").json() == {"ok": True}
     assert client.post("/chat", json={}).status_code == 422
 
