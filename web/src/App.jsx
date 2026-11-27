@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   Conversation as ConversationLog,
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-elements/checkpoint";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
@@ -102,6 +103,16 @@ export default function App() {
     run(id, turns[index].question, history);
   }
 
+  /** Checkpoints: go back to just after turn `index`, dropping the answers after it. The
+   * server's thread still has them, so the next question starts a new thread that gets the
+   * kept turns as its history. */
+  function restore(index) {
+    if (pending) return;
+    conversation.current += 1;
+    threadId.current = null;
+    setTurns((ts) => ts.slice(0, index + 1));
+  }
+
   function newQuestion() {
     conversation.current += 1;
     threadId.current = null;
@@ -114,7 +125,7 @@ export default function App() {
       {turns.length === 0 ? (
         <Home onAsk={ask} />
       ) : (
-        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} />
+        <Conversation turns={turns} pending={pending} onAsk={ask} onRetry={retry} onRestore={restore} />
       )}
     </div>
   );
@@ -252,7 +263,7 @@ function FeatureIcon({ name }) {
   );
 }
 
-function Conversation({ turns, pending, onAsk, onRetry }) {
+function Conversation({ turns, pending, onAsk, onRetry, onRestore }) {
   return (
     <main className="conversation">
       <header className="conversation-header">
@@ -262,13 +273,27 @@ function Conversation({ turns, pending, onAsk, onRetry }) {
       <ConversationLog className="thread">
         <ConversationContent className="thread-inner">
           {turns.map((turn, i) => (
-            <Turn
-              key={turn.id}
-              turn={turn}
-              retryDisabled={pending}
-              onRetry={() => onRetry(turn.id)}
-              onPick={i === turns.length - 1 && !pending ? onAsk : null}
-            />
+            <Fragment key={turn.id}>
+              <Turn
+                turn={turn}
+                retryDisabled={pending}
+                onRetry={() => onRetry(turn.id)}
+                onPick={i === turns.length - 1 && !pending ? onAsk : null}
+              />
+              {/* a checkpoint between answered turns: go back to here */}
+              {turn.status === "done" && i < turns.length - 1 && (
+                <Checkpoint className="checkpoint">
+                  <CheckpointIcon />
+                  <CheckpointTrigger
+                    disabled={pending}
+                    onClick={() => onRestore(i)}
+                    tooltip="Remove the answers after this one and ask from here"
+                  >
+                    Restore to here
+                  </CheckpointTrigger>
+                </Checkpoint>
+              )}
+            </Fragment>
           ))}
         </ConversationContent>
         <ConversationScrollButton aria-label="Scroll to the newest answer" />

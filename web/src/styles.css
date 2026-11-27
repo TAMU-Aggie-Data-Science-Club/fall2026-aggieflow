@@ -843,3 +843,8 @@ button {
     display: none;
   }
 }
+
+/* Checkpoints between answered turns ("Restore to here") */
+.checkpoint {
+  margin: 4px 0;
+}
