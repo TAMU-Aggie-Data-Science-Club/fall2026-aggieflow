@@ -38,7 +38,7 @@ The agent is also available over HTTP with FastAPI. The React UI in `web/` calls
 uv run uvicorn api.main:app --reload
 ```
 
-Then open http://localhost:8000/docs to try `POST /chat` in the browser. Send `{"question": "..."}`, plus `history` (the earlier turns) for follow-ups. The reply has the `answer`, its `sources`, the `tools` the agent called, and `grades`: for each course it looked up on anex.us, grade counts by professor (the same professors and numbers the agent was given), which the UI draws as a chart. Set `ALLOWED_ORIGINS` in `.env` (comma-separated) to let a frontend on another address call it; the default is `http://localhost:5173`.
+Then open http://localhost:8000/docs to try `POST /chat` in the browser. Send `{"question": "..."}`, plus `history` (the earlier turns) for follow-ups. The reply has the `answer`, its `sources`, the `tools` the agent called, and `grades`: for each course it looked up on anex.us, grade counts by professor (the same professors and numbers the agent was given), which the UI draws as a chart. The reply also has a `run_id`. With LangSmith tracing on, `POST /feedback` with `{"run_id": "...", "score": 1}` (thumbs up) or `0` (thumbs down) attaches the student's rating to that run as `user_score` feedback, which the UI's thumbs buttons do. Without tracing it answers 503. Set `ALLOWED_ORIGINS` in `.env` (comma-separated) to let a frontend on another address call it; the default is `http://localhost:5173`.
 
 To add a package, run `uv add <package>` and commit both `pyproject.toml` and `uv.lock`. More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 

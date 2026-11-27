@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from functools import lru_cache
 from pathlib import Path
 
@@ -134,6 +135,8 @@ def answer(question: str, graph=None, metadata: dict | None = None,
         "documents": [every passage the tools returned, cited or not],
         "trace": [[tool calls], ...] round by round,
         "calls": [{"round", "name", "args", "error"}, ...] every tool call in order,
+        "run_id": str, the id of this answer's LangSmith run, so feedback (a student's
+                  thumbs up or down) can be attached to it,
         "question": {"prompt", "options"} when the agent asked the student instead of
                     answering (ask_user), with or without a thread, else None. "answer" is
                     then the question as text; options are [] for an open question.
@@ -144,7 +147,9 @@ def answer(question: str, graph=None, metadata: dict | None = None,
     (an option or their own words) and the paused turn goes on from there.
     """
     graph = graph or _get_graph(threads=thread_id is not None)
-    config = {"run_name": "aggieflow", "metadata": {**run_metadata(), **(metadata or {})}}
+    run_id = uuid.uuid4()
+    config = {"run_name": "aggieflow", "run_id": run_id,
+              "metadata": {**run_metadata(), **(metadata or {})}}
     if thread_id is not None:
         config["configurable"] = {"thread_id": thread_id}
     if thread_id is not None and graph.get_state(config).interrupts:
@@ -155,7 +160,7 @@ def answer(question: str, graph=None, metadata: dict | None = None,
     retrieved = state.get("sources", [])
     documents = list({p["id"]: p for p in retrieved}.values())  # each passage once, in order found
     result = {"trace": trace(state["messages"]), "calls": tool_calls(state["messages"]),
-              "documents": documents, "question": None}
+              "documents": documents, "question": None, "run_id": str(run_id)}
     if state.get("__interrupt__"):  # paused on ask_user: the student's reply resumes it
         asked = state["__interrupt__"][0].value
         return {**result, "answer": question_text(asked), "sources": [], "question": asked}

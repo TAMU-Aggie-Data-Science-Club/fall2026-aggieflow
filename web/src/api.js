@@ -5,7 +5,7 @@ const MAX_HISTORY = 20; // the API rejects more than 20 earlier messages
  * Ask the agent one question. `threadId` is the conversation to continue (null starts
  * one). `history` is the earlier turns, oldest first, as [{role: "user" | "assistant",
  * content}]: the server keeps the thread, and uses history only if it lost it (a restart).
- * Resolves to {answer, sources, tools, steps, grades, threadId, asked}. `asked` is
+ * Resolves to {answer, sources, tools, steps, grades, threadId, asked, runId}. `asked` is
  * {prompt, options} when the agent asks which one the student means; the reply (an
  * option or typed words) goes back as the next question in the same thread.
  * Throws an Error whose message is safe to show the student.
@@ -41,5 +41,19 @@ export async function askAgent(question, history, threadId = null) {
     grades: data.grades ?? [], // grade charts, one per course the agent looked up on anex.us
     threadId: data.thread_id ?? null,
     asked: data.question ?? null, // not `question`: a turn's question is the student's text
+    runId: data.run_id ?? null, // this answer's LangSmith run, for sendFeedback
   };
+}
+
+/**
+ * A thumbs up (score 1) or down (score 0) on the answer whose `runId` askAgent returned.
+ * Throws if it wasn't sent: the server has feedback off (no LangSmith) or can't be reached.
+ */
+export async function sendFeedback(runId, score) {
+  const response = await fetch(`${API_URL}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId, score }),
+  });
+  if (!response.ok) throw new Error(`Feedback not sent (${response.status})`);
 }

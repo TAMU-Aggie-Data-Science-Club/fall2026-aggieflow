@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import api.main
 
 URL = "https://student-rules.tamu.edu/rule01/"
+RUN = "0b6f8f2e-3c1d-4f5a-9e7b-2d4c6a8e0f13"
 PASSAGE = {"id": "student-rules:rule01:0", "source": "student-rules", "title": "Rule 1",
            "text": "...", "source_url": URL}
 
@@ -20,6 +21,7 @@ def fake_answer(question, history=None, metadata=None, thread_id=None):
         "trace": [["search_student_rules"]],
         "calls": [{"round": 1, "name": "search_student_rules", "args": {}, "error": None},
                   {"round": 2, "name": "search_student_rules", "args": {}, "error": None}],
+        "run_id": RUN,
     }
 
 
@@ -44,6 +46,7 @@ def test_chat(client, monkeypatch):
         "tools": ["search_student_rules"],
         "steps": [{"name": "search_student_rules", "args": {}, "error": None}] * 2,
         "grades": [],
+        "run_id": RUN,
         "question": None,
     }
 
@@ -144,3 +147,67 @@ def test_chat_returns_the_question_when_the_agent_asks(client, monkeypatch):
                                                               "sources": [], "calls": [], "question": asked})
     body = client.post("/chat", json={"question": "is professor leyk good"}).json()
     assert body["question"] == asked and body["sources"] == []
+
+
+# --- feedback ---------------------------------------------------------------
+
+@pytest.fixture
+def langsmith_on(monkeypatch):
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
+
+
+def test_feedback_is_sent_for_the_run(client, monkeypatch, langsmith_on):
+    sent = []
+    monkeypatch.setattr(api.main, "send_feedback", lambda run_id, score: sent.append((run_id, score)))
+    r = client.post("/feedback", json={"run_id": RUN, "score": 1})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    assert client.post("/feedback", json={"run_id": RUN, "score": 0}).status_code == 200
+    assert sent == [(RUN, 1), (RUN, 0)]
+
+
+@pytest.mark.parametrize("env", [{}, {"LANGSMITH_API_KEY": "test-key"}, {"LANGSMITH_TRACING": "true"}])
+def test_feedback_is_off_without_langsmith_tracing(client, monkeypatch, env):
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    sent = []
+    monkeypatch.setattr(api.main, "send_feedback", lambda run_id, score: sent.append(run_id))
+    r = client.post("/feedback", json={"run_id": RUN, "score": 1})
+    assert r.status_code == 503 and sent == []
+
+
+@pytest.mark.parametrize("body", [
+    {"run_id": RUN},
+    {"run_id": RUN, "score": 2},
+    {"run_id": RUN, "score": -1},
+    {"run_id": "../other", "score": 1},
+    {"score": 1},
+])
+def test_feedback_bad_request(client, langsmith_on, body):
+    assert client.post("/feedback", json=body).status_code == 422
+
+
+def test_feedback_error_is_not_shown(client, monkeypatch, langsmith_on):
+    def boom(run_id, score):
+        raise RuntimeError("401 invalid api key test-key")
+
+    monkeypatch.setattr(api.main, "send_feedback", boom)
+    r = client.post("/feedback", json={"run_id": RUN, "score": 1})
+    assert r.status_code == 503
+    assert "test-key" not in r.text
+
+
+def test_send_feedback_attaches_the_score_to_the_run(monkeypatch):
+    import langsmith
+
+    calls = []
+
+    class FakeClient:
+        def create_feedback(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(langsmith, "Client", FakeClient)
+    api.main.send_feedback(RUN, 0)
+    assert calls == [{"run_id": RUN, "trace_id": RUN, "key": "user_score", "score": 0}]
