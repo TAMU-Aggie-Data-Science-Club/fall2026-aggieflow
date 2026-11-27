@@ -20,7 +20,7 @@ from agent.state import Passage
 NOT_SURE = "I'm not sure. I couldn't find this in AggieFlow's sources."
 
 COVERS = ("the Student Rules, registrar dates and deadlines, degree plans, the course catalog, "
-          "grade distributions, professor ratings, IT help and transportation")
+          "grade distributions, professor ratings, IT help, transportation and the libraries")
 
 INTRO = f"Howdy! I'm AggieFlow. I can answer questions about {COVERS}. What do you need?"
 
@@ -35,6 +35,9 @@ SITES = {
     "get_course_grades": ("anex.us", "https://anex.us"),
     "get_professor_grades": ("anex.us", "https://anex.us"),
     "get_professor_ratings": ("RateMyProfessors", "https://www.ratemyprofessors.com"),
+    "search_libraries": ("the University Libraries", "https://library.tamu.edu"),
+    "get_library_hours": ("the Libraries' hours", "https://library.tamu.edu/about/hours.html"),
+    "list_library_equipment": ("the Tech Bar", "https://library.tamu.edu/services/techbar.html"),
 }
 
 
