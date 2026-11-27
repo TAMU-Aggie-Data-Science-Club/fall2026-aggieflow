@@ -36,3 +36,4 @@ venv/
 # web/ (React UI, #104)
 node_modules/
 web/dist/
+.claude/

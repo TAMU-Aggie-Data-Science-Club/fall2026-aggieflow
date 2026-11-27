@@ -681,6 +681,9 @@ button {
 }
 
 .thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: var(--muted);
 }
@@ -804,11 +807,6 @@ button {
   .beta {
     display: none;
   }
-}
-
-/* Checkpoints between answered turns ("Restore to here") */
-.checkpoint {
-  margin: 4px 0;
 }
 
 /* The agent's "which one did you mean?" (AI Elements Question) */

@@ -1,6 +1,5 @@
 "use client";;
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   createContext,
@@ -139,13 +138,6 @@ export const QuestionPrompt = ({
   <p className={cn("font-medium text-sm", className)} {...props} />
 );
 
-export const QuestionDescription = ({
-  className,
-  ...props
-}) => (
-  <p className={cn("text-muted-foreground text-sm", className)} {...props} />
-);
-
 export const QuestionOptions = ({
   className,
   ...props
@@ -193,62 +185,6 @@ export const QuestionOption = ({
       {...props}
     >
       {children ?? value}
-    </Button>
-  );
-};
-
-export const QuestionInput = ({
-  className,
-  disabled,
-  onChange,
-  ...props
-}) => {
-  const question = useQuestion();
-  const handleChange = useCallback(
-    (event) => {
-      question.setText(event.currentTarget.value);
-      onChange?.(event);
-    },
-    [onChange, question]
-  );
-
-  return (
-    <Textarea
-      className={cn("min-h-20", className)}
-      disabled={question.disabled || disabled}
-      onChange={handleChange}
-      value={question.text}
-      {...props}
-    />
-  );
-};
-
-export const QuestionActions = ({
-  className,
-  ...props
-}) => (
-  <div
-    className={cn("flex items-center justify-end gap-2", className)}
-    {...props}
-  />
-);
-
-export const QuestionSubmit = ({
-  children = "Submit",
-  disabled,
-  ...props
-}) => {
-  const question = useQuestion();
-  const hasResponse =
-    question.selectedValues.length > 0 || question.text.trim().length > 0;
-
-  return (
-    <Button
-      disabled={question.disabled || disabled || !hasResponse}
-      type="submit"
-      {...props}
-    >
-      {children}
     </Button>
   );
 };

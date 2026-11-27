@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { CircleAlertIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
 import {
@@ -12,9 +12,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@/components/ai-elements/checkpoint";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources as SourcesList, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Question, QuestionOption, QuestionOptions, QuestionPrompt } from "@/components/ai-elements/question";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
@@ -85,16 +83,6 @@ export default function App() {
     if (!pending) regenerate();
   }
 
-  /** Checkpoints: go back to just after turn `index`, dropping the answers after it. The
-   * server's thread still has them, so the next question starts a new thread that gets the
-   * kept turns as its history. */
-  function restore(index) {
-    if (pending) return;
-    threadId.current = crypto.randomUUID();
-    const reply = turns[index].reply;
-    setMessages(messages.slice(0, messages.indexOf(reply) + 1));
-  }
-
   function newQuestion() {
     stop();
     threadId.current = crypto.randomUUID();
@@ -107,7 +95,7 @@ export default function App() {
       {turns.length === 0 ? (
         <Home onAsk={ask} />
       ) : (
-        <Conversation turns={turns} pending={pending} error={error} onAsk={ask} onRetry={retry} onRestore={restore} />
+        <Conversation turns={turns} pending={pending} error={error} onAsk={ask} onRetry={retry} />
       )}
     </div>
   );
@@ -245,7 +233,7 @@ function FeatureIcon({ name }) {
   );
 }
 
-function Conversation({ turns, pending, error, onAsk, onRetry, onRestore }) {
+function Conversation({ turns, pending, error, onAsk, onRetry }) {
   return (
     <main className="conversation">
       <header className="conversation-header">
@@ -258,28 +246,14 @@ function Conversation({ turns, pending, error, onAsk, onRetry, onRestore }) {
             const last = i === turns.length - 1;
             const answered = answerOf(turn.reply) !== null;
             return (
-              <Fragment key={turn.id}>
-                <Turn
-                  turn={turn}
-                  live={last && pending}
-                  error={last && !pending && !answered ? error?.message || UNANSWERED : !answered && !last ? UNANSWERED : null}
-                  onRetry={last ? onRetry : null}
-                  onPick={last && !pending ? onAsk : null}
-                />
-                {/* a checkpoint between answered turns: go back to here */}
-                {answered && !last && (
-                  <Checkpoint className="checkpoint">
-                    <CheckpointIcon />
-                    <CheckpointTrigger
-                      disabled={pending}
-                      onClick={() => onRestore(i)}
-                      tooltip="Remove the answers after this one and ask from here"
-                    >
-                      Restore to here
-                    </CheckpointTrigger>
-                  </Checkpoint>
-                )}
-              </Fragment>
+              <Turn
+                key={turn.id}
+                turn={turn}
+                live={last && pending}
+                error={last && !pending && !answered ? error?.message || UNANSWERED : !answered && !last ? UNANSWERED : null}
+                onRetry={last ? onRetry : null}
+                onPick={last && !pending ? onAsk : null}
+              />
             );
           })}
         </ConversationContent>
@@ -325,7 +299,8 @@ function Turn({ turn, live, error, onRetry, onPick }) {
             </MessageContent>
           ) : (
             <div className="thinking" role="status" aria-live="polite">
-              {REDUCED_MOTION ? "Thinking…" : <Shimmer as="span">{steps.length ? "Looking things up…" : "Thinking…"}</Shimmer>}
+              <Spinning className="size-4" aria-hidden="true" />
+              {steps.length ? "Looking things up…" : "Thinking…"}
             </div>
           )}
         </div>
