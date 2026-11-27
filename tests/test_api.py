@@ -100,7 +100,7 @@ def test_a_grade_chart_that_fails_does_not_fail_the_answer(client, monkeypatch):
         raise RuntimeError("anex.us down")
 
     monkeypatch.setattr(api.main, "answer", grade_answer)
-    monkeypatch.setattr(api.main.data, "grade_chart", broken)
+    monkeypatch.setattr(api.main.grades, "grade_chart", broken)
     r = client.post("/chat", json={"question": "who's easiest for chem 107"})
     assert r.status_code == 200 and r.json()["grades"] == []
 

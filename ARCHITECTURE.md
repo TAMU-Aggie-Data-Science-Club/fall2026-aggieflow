@@ -1,6 +1,6 @@
 # AggieFlow architecture
 
-How a student's question becomes a cited answer. The tools get passages through `agent/data.py`: from MongoDB Atlas when `MONGODB_URI` is set (keyword, vector or hybrid search for the search tools, picked by `AGGIEFLOW_SEARCH`), otherwise from the collectors' files in `data/processed/`. Grades are fetched live from anex.us.
+How a student's question becomes a cited answer. The tools get passages through `agent/data.py`: from MongoDB Atlas when `MONGODB_URI` is set (keyword, vector or hybrid search for the search tools, picked by `AGGIEFLOW_SEARCH`), otherwise from the collectors' files in `data/processed/`. Grades, professor ratings and library hours and equipment are fetched live, in `agent/grades.py`, `agent/ratings.py` and `agent/libcal.py`.
 
 ## The agent
 
@@ -23,7 +23,7 @@ normalize ── starts the run (question becomes the first message)
   END
 ```
 
-These follow patterns from Google Cloud's [agent design patterns guide](https://docs.cloud.google.com/architecture/choose-design-pattern-agentic-ai-system): a **single agent** with a **ReAct** tool loop, **custom logic** for the checks, and tool calls that run in **parallel**. One `tools` node runs every call the model makes in a turn at the same time, so a question that spans categories doesn't wait on each one in turn. The groups below are only how the code is organized (one file each) and how traces label calls; timeouts and caching live in `agent/data.py` and the tool files.
+These follow patterns from Google Cloud's [agent design patterns guide](https://docs.cloud.google.com/architecture/choose-design-pattern-agentic-ai-system): a **single agent** with a **ReAct** tool loop, **custom logic** for the checks, and tool calls that run in **parallel**. One `tools` node runs every call the model makes in a turn at the same time, so a question that spans categories doesn't wait on each one in turn. The groups below are only how the code is organized (one file each) and how traces label calls; timeouts and caching live in `agent/grades.py`, `agent/ratings.py`, `agent/libcal.py` and the tool files.
 
 ## Tools
 
@@ -56,7 +56,7 @@ Every tool returns a list of **passages**, the same format the collectors write 
 ```
 collectors ─► data/raw/ ─► data/processed/*.jsonl ─► agent/data.py ─► policy and course tools
                                      └─► check.py ─► load.py ─► MongoDB Atlas   (agent/data.py reads here when MONGODB_URI is set)
-anex.us feed (live, cached a day) ───────────────► agent/data.py ─► grade tools
+anex.us feed (live, cached a day) ───────────────► agent/grades.py ─► grade tools
 ```
 
 ## Files
@@ -65,7 +65,10 @@ anex.us feed (live, cached a day) ───────────────�
 |---|---|
 | `agent/graph.py` | The graph: nodes, edges, system prompt |
 | `agent/tools/` | One file per tool group; `__init__.py` lists the groups |
-| `agent/data.py` | Loads passages, keyword search, course and grade lookups |
+| `agent/data.py` | Loads passages, keyword search, course lookups |
+| `agent/grades.py` | anex.us grades, fetched live and cached |
+| `agent/ratings.py` | RateMyProfessors ratings, fetched live and cached |
+| `agent/libcal.py` | Library hours and Tech Bar equipment from LibCal, fetched live and cached |
 | `agent/checks.py` | Not-sure and citation checks (no model calls) |
 | `agent/state.py` | `Passage` and graph state types |
 | `agent/run.py` | `answer(question)` and the command line |
@@ -98,6 +101,6 @@ Without `MONGODB_URI`, the tools read the collectors' files instead: run `uv run
 ## Adding a tool
 
 1. Give it one job that no other tool covers, and say in its description when *not* to use it.
-2. Put the data access in `agent/data.py` and keep the tool a thin wrapper that returns passages.
+2. Put the data access in `agent/data.py` (or its own module for a live source, like `agent/libcal.py`) and keep the tool a thin wrapper that returns passages.
 3. Add it to the right file's `TOOLS` list in `agent/tools/`.
 4. Run `python -m pytest tests` and a few real questions.

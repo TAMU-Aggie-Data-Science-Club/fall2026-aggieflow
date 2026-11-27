@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agent import data
+from agent import grades, libcal, ratings
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -31,7 +31,7 @@ def _fake_rmp(name):
 
 
 def _fake_libcal(url, params):
-    if url == data.LIBCAL_HOURS_URL:
+    if url == libcal.LIBCAL_HOURS_URL:
         return json.loads((FIXTURES / "libcal" / "hours.json").read_text(encoding="utf-8"))
     name = f"{params['lid']}-{params['gid']}" + (f"-{params['q'].lower()}" if params.get("q") else "")
     path = FIXTURES / "libcal" / "equipment" / f"{name}.json"
@@ -43,10 +43,10 @@ def _fake_libcal(url, params):
 @pytest.fixture(autouse=True)
 def sample_data(monkeypatch):
     monkeypatch.setenv("AGGIEFLOW_DATA_DIR", str(FIXTURES / "processed"))  # files, never Atlas
-    monkeypatch.setattr(data, "_fetch_anex", _fake_anex)
-    data._anex_cache.clear()
-    monkeypatch.setattr(data, "_fetch_rmp", _fake_rmp)
-    data._rmp_cache.clear()
-    monkeypatch.setattr(data, "_fetch_libcal", _fake_libcal)
-    monkeypatch.setattr(data, "campus_today", lambda: date(2026, 11, 22))
-    data._libcal_cache.clear()
+    monkeypatch.setattr(grades, "_fetch_anex", _fake_anex)
+    grades._anex_cache.clear()
+    monkeypatch.setattr(ratings, "_fetch_rmp", _fake_rmp)
+    ratings._rmp_cache.clear()
+    monkeypatch.setattr(libcal, "_fetch_libcal", _fake_libcal)
+    monkeypatch.setattr(libcal, "campus_today", lambda: date(2026, 11, 22))
+    libcal._libcal_cache.clear()

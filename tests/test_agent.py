@@ -8,7 +8,7 @@ import json
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent import data
+from agent import data, grades
 from agent.checks import INTRO, NOT_SURE, finalize
 from agent.graph import build_graph
 from agent.run import answer, answer_stream
@@ -201,10 +201,10 @@ def test_professor_grades_uses_the_initial_when_last_names_match(monkeypatch):
     section = {"year": "2024", "semester": "FALL", "section": "501",
                "A": "10", "B": "0", "C": "0", "D": "0", "F": "0", "Q": "0"}
     feed = {"classes": [{**section, "prof": "SMITH A"}, {**section, "prof": "SMITH J"}]}
-    monkeypatch.setattr(data, "_fetch_anex", lambda dept, number: json.dumps(feed))
-    assert data.professor_grades("MATH 151", "Jane Smith")[0]["title"] == "MATH 151 grades with SMITH J"
+    monkeypatch.setattr(grades, "_fetch_anex", lambda dept, number: json.dumps(feed))
+    assert grades.professor_grades("MATH 151", "Jane Smith")[0]["title"] == "MATH 151 grades with SMITH J"
     with pytest.raises(ValueError, match="SMITH A, SMITH J"):
-        data.professor_grades("MATH 151", "Smith")  # no initial: ask instead of guessing
+        grades.professor_grades("MATH 151", "Smith")  # no initial: ask instead of guessing
 
 
 def test_search_mode_defaults_to_hybrid_and_rejects_unknown(monkeypatch):

@@ -27,7 +27,7 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-dev
 COPY agent/ agent/
 COPY api/ api/
-# The live grades, ratings and library tools reuse the anex collector's code (agent/data.py).
+# The live grades, ratings and library tools reuse the anex collector's code (agent/grades.py).
 COPY pipeline/collect/anex.py pipeline/collect/anex.py
 COPY --from=web /web/dist web/dist
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 app = FastAPI()
 
-from agent import data
+from agent import data, grades
 from agent.run import answer, answer_stream
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ GRADE_TOOLS = {"get_course_grades"}
 
 
 def grade_charts(calls: list[dict]) -> list[dict]:
-    """One grade chart (data.grade_chart) per course the agent looked up on anex.us, in
+    """One grade chart (grades.grade_chart) per course the agent looked up on anex.us, in
     the order it looked them up. The tool already fetched and cached the course, so this
     makes no new request. A chart that can't be built is skipped: it never fails the answer."""
     charts, seen = [], set()
@@ -34,7 +34,7 @@ def grade_charts(calls: list[dict]) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            chart = data.grade_chart(course)
+            chart = grades.grade_chart(course)
         except Exception:
             logger.warning("No grade chart for %r", course, exc_info=True)
             continue

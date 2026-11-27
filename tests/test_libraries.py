@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agent import data
+from agent import libcal
 from agent.checks import finalize
 from agent.tools import GROUP_OF
 from agent.tools.libraries import get_library_hours, list_library_equipment, search_libraries
@@ -21,7 +21,7 @@ _spec.loader.exec_module(collect)
 # --- hours ------------------------------------------------------------------------
 
 def test_hours_for_one_library_cover_two_weeks_with_today_marked():
-    [p] = data.library_hours("west campus library")
+    [p] = libcal.library_hours("west campus library")
     assert p["id"] == "libraries:hours/3516:1:live"
     assert p["source"] == "libraries"
     assert p["source_url"] == "https://library.tamu.edu/about/hours.html"  # the page students open, not the feed
@@ -33,16 +33,16 @@ def test_hours_for_one_library_cover_two_weeks_with_today_marked():
 
 
 def test_midnight_and_wcl_shorthand():
-    [p] = data.library_hours("wcl")
+    [p] = libcal.library_hours("wcl")
     assert p["title"] == "West Campus Library hours"
-    evans = data.library_hours("evans annex")
+    evans = libcal.library_hours("evans annex")
     assert [e["title"] for e in evans] == ["Sterling C. Evans Library Annex hours"]
     assert "Monday, November 16: 7am - 3am" in evans[0]["text"]
     assert "past midnight run into the next morning" in evans[0]["text"]
 
 
 def test_evans_means_the_library_and_the_annex():
-    found = data.library_hours("Evans Library")
+    found = libcal.library_hours("Evans Library")
     assert sorted(p["title"] for p in found) == ["Sterling C. Evans Library Annex hours",
                                                  "Sterling C. Evans Library hours"]
     library = next(p for p in found if p["title"] == "Sterling C. Evans Library hours")
@@ -51,41 +51,41 @@ def test_evans_means_the_library_and_the_annex():
 
 
 def test_no_location_lists_libraries_with_hours_set():
-    titles = {p["title"] for p in data.library_hours()}
+    titles = {p["title"] for p in libcal.library_hours()}
     assert "West Campus Library hours" in titles
     assert "Swipe Access hours" not in titles  # a service, not a library
     assert "Policy Sciences & Economics Library hours" not in titles  # no hours set
 
 
 def test_a_library_without_hours_set_says_so():
-    [p] = data.library_hours("policy sciences")
+    [p] = libcal.library_hours("policy sciences")
     assert "Monday, November 16: hours not posted" in p["text"]
 
 
 def test_unknown_location_names_the_libraries():
     with pytest.raises(LookupError, match="West Campus Library"):
-        data.library_hours("zachry")
+        libcal.library_hours("zachry")
 
 
 def test_hours_are_cached(monkeypatch):
     calls = []
-    real = data._fetch_libcal
-    monkeypatch.setattr(data, "_fetch_libcal", lambda url, params: calls.append(url) or real(url, params))
-    data.library_hours("wcl")
-    data.library_hours("evans")
+    real = libcal._fetch_libcal
+    monkeypatch.setattr(libcal, "_fetch_libcal", lambda url, params: calls.append(url) or real(url, params))
+    libcal.library_hours("wcl")
+    libcal.library_hours("evans")
     assert len(calls) == 1
 
 
 def test_a_changed_feed_raises_instead_of_answering(monkeypatch):
-    monkeypatch.setattr(data, "_fetch_libcal", lambda url, params: {"oops": []})
+    monkeypatch.setattr(libcal, "_fetch_libcal", lambda url, params: {"oops": []})
     with pytest.raises(RuntimeError, match="changed its hours format"):
-        data.library_hours("wcl")
+        libcal.library_hours("wcl")
 
 
 # --- equipment --------------------------------------------------------------------
 
 def test_a_category_lists_each_tech_bar_with_its_reserve_page():
-    found = data.library_equipment("calculators")
+    found = libcal.library_equipment("calculators")
     assert [p["title"] for p in found] == ["Calculators at the Tech Bar at Evans Library Annex",
                                            "Calculators at the Tech Bar at West Campus Library"]
     annex = found[0]
@@ -102,18 +102,18 @@ def test_a_category_lists_each_tech_bar_with_its_reserve_page():
 
 @pytest.mark.parametrize("asked", ["laptops", "Chromebook", "chromebooks"])
 def test_everyday_words_find_the_category(asked):
-    found = data.library_equipment(asked, "evans annex")
+    found = libcal.library_equipment(asked, "evans annex")
     assert [p["title"] for p in found] == ["Chromebooks at the Tech Bar at Evans Library Annex"]
 
 
 def test_a_location_narrows_to_one_tech_bar():
-    [p] = data.library_equipment("calculators", "WCL")
+    [p] = libcal.library_equipment("calculators", "WCL")
     assert p["title"] == "Calculators at the Tech Bar at West Campus Library"
     assert "- TI - BA II Plus" in p["text"]
 
 
 def test_a_model_name_searches_items_across_categories():
-    [p] = data.library_equipment("TI-84", "annex")
+    [p] = libcal.library_equipment("TI-84", "annex")
     assert p["title"] == "Items matching 'TI-84' at the Tech Bar at Evans Library Annex"
     assert p["source_url"] == "https://tamu.libcal.com/equipment?lid=20326"
     assert "TI-84 Data Transfer Cable: USB-A to Mini-B cable (Chargers, cables and adaptors)" in p["text"]
@@ -123,31 +123,31 @@ def test_a_model_name_searches_items_across_categories():
 def test_an_exact_category_name_wins_over_its_words(monkeypatch):
     # 'accessories' alone means computer accessories; the full name is its own category.
     asked = []
-    monkeypatch.setattr(data, "_equipment_items",
+    monkeypatch.setattr(libcal, "_equipment_items",
                         lambda lid, gid, query="": asked.append((lid, gid, query)) or ([], "x"))
     with pytest.raises(LookupError):
-        data.library_equipment("Photography accessories", "annex")
+        libcal.library_equipment("Photography accessories", "annex")
     assert asked == [(20326, 42971, "")]
 
 
 def test_a_category_one_tech_bar_lacks():
     with pytest.raises(LookupError, match="doesn't lend astronomy"):
-        data.library_equipment("telescope", "west campus")
+        libcal.library_equipment("telescope", "west campus")
 
 
 def test_nothing_matching_lists_the_categories():
     with pytest.raises(LookupError, match="Calculators, Chargers"):
-        data.library_equipment("xbox")
+        libcal.library_equipment("xbox")
 
 
 def test_unknown_tech_bar():
     with pytest.raises(LookupError, match="Tech Bar at West Campus Library"):
-        data.library_equipment("calculators", "zachry")
+        libcal.library_equipment("calculators", "zachry")
 
 
 def test_equipment_follows_libcals_pages(monkeypatch):
-    monkeypatch.setattr(data, "LIBCAL_PER_PAGE", 2)
-    [p] = data.library_equipment("calculators", "annex")
+    monkeypatch.setattr(libcal, "LIBCAL_PER_PAGE", 2)
+    [p] = libcal.library_equipment("calculators", "annex")
     assert "(5 listed;" in p["text"]  # 3 pages of 2
 
 

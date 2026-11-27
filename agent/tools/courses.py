@@ -2,12 +2,12 @@
 
 Course tools take the course the same way, a code like 'CSCE 121'. Data comes
 from the catalog and anex.us collectors, and live from RateMyProfessors
-(see agent/data.py).
+(see agent/grades.py and agent/ratings.py).
 """
 
 from langchain_core.tools import tool
 
-from agent import data
+from agent import data, grades, ratings
 from agent.state import Passage
 
 
@@ -27,7 +27,7 @@ def get_course_grades(course: str) -> list[Passage]:
     easiest professor'. The easiest professor has the HIGHEST average GPA. `course` is a code like 'MATH 151'.
     For 'who should I take' or 'best professor', also call
     get_professor_ratings for the top 3 professors by GPA."""
-    return data.grades(course)
+    return grades.grades(course)
 
 
 @tool
@@ -38,7 +38,7 @@ def get_professor_grades(course: str, professor: str) -> list[Passage]:
     If the name isn't found it may be misspelled: call get_course_grades to see
     the exact names of the course's professors. For 'is X good for this course'
     or 'is X a tough grader', also call get_professor_ratings."""
-    return data.professor_grades(course, professor)
+    return grades.professor_grades(course, professor)
 
 
 @tool
@@ -54,7 +54,7 @@ def get_professor_ratings(professor: str, course: str | None = None) -> list[Pas
     When the question names a course, also call get_professor_grades (one
     professor) or get_course_grades (choosing one), unless it only asks how
     they teach."""
-    return data.professor_ratings(professor, course)
+    return ratings.professor_ratings(professor, course)
 
 
 TOOLS = [get_course, get_course_grades, get_professor_grades, get_professor_ratings]
