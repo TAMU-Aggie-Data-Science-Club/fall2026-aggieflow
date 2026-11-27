@@ -408,6 +408,23 @@ Precision@5 wasn't measured. It needs the judge, and hit@5 already answers the q
 - **Catalog is the one source that got worse at hit@1**, and it is still the weakest. Reranking doesn't fix the crowding-out problem from #76. That needs its own fix.
 - 6 questions lost a top-1 hit (ask-05 and catalog-01 fell out of the top 10). 5 questions that weren't found at all now are. Tags with 4 or fewer questions are noise.
 
+### Against keyword and vector
+
+The same 99 questions with `--modes keyword,vector` (commit `61e0cbd`, the same search code). Reranking only touches hybrid.
+
+| Raw questions | hit@1 | hit@5 | MRR@10 |
+|---|---|---|---|
+| Keyword | 0.47 | 0.63 | 0.55 |
+| Vector | 0.62 | 0.82 | 0.71 |
+| Hybrid | 0.57 | 0.75 | 0.64 |
+| Hybrid + rerank | **0.68** | **0.86** | **0.76** |
+
+- **Over keyword, hybrid + rerank gains about 20 points** on every metric (hit@1 +21, hit@5 +23, MRR +0.21).
+- **Over vector, the gain is small** (+6, +4, +0.05). It is probably within noise: vector vs keyword needed a 36 / 13 win/loss split to clear its CI.
+- **Hybrid without rerank is worse than vector on raw questions**, which matches #76. Reranking is what puts hybrid on top.
+- **Catalog:** keyword is still best at hit@1 (0.40). Vector and hybrid + rerank both get 0.27.
+- These are raw questions. With the agent's rewritten queries, the modes tied in #76, so users will likely see a smaller gap than this.
+
 ## Test and grader fixes
 
 The eval was wrong more often than the agent. Every fix below turned a failure on a correct answer into a pass:
