@@ -21,6 +21,7 @@ The answers students need are scattered across various official and unofficial s
    - `GOOGLE_API_KEY`: required for the agent (Gemini). Ask a PM, or use your own billed key.
    - `GROQ_API_KEY`: for the eval judges. Get a free key at [console.groq.com](https://console.groq.com).
    - `MONGODB_URI`: ask a PM for an Atlas database user. Leave it empty to search the local files in `data/processed/` instead (fill them by running the collectors, e.g. `uv run python pipeline/collect/student-rules.py`).
+   - `VOYAGE_API_KEY` (optional): reranks hybrid search results with Voyage. Get a free Model API key in Atlas under AI Model APIs.
    - LangSmith (optional): set `LANGSMITH_TRACING=true` and your own `LANGSMITH_API_KEY` to see every run's tool calls.
 4. Try it:
 
@@ -79,7 +80,7 @@ Then open http://localhost:8000. Notes:
 | Layer | Technology |
 |---|---|
 | Agent | LangGraph and LangChain, running Gemini 3.5 Flash Lite |
-| Search | MongoDB Atlas (free M0 cluster): keyword, vector (Voyage embeddings) and hybrid search |
+| Search | MongoDB Atlas (free M0 cluster): keyword, vector (Voyage embeddings) and hybrid search, reranked with Voyage |
 | Live data | Agent tools that call anex.us (grades) and RateMyProfessors at question time |
 | Data collection | Python collectors (`requests`, BeautifulSoup) |
 | API | FastAPI |
@@ -89,7 +90,7 @@ Then open http://localhost:8000. Notes:
 
 ## Testing
 
-Test-driven development was essential to keeping our agent reliable across iterations and in prod. The repo has 467 pytest tests: 273 offline and 194 live (these call real model APIs and run with `uv run pytest -m live`). The offline tests run on every pull request through GitHub Actions CI.
+Test-driven development was essential to keeping our agent reliable across iterations and in prod. The repo has 453 pytest tests: 259 offline and 194 live (these call real model APIs and run with `uv run pytest -m live`). The offline tests run on every pull request through GitHub Actions CI.
 
 ## Scope and limits
 
