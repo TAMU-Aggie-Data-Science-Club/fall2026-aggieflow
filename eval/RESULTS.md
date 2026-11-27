@@ -383,6 +383,31 @@ Precision@5 wasn't measured. It needs the judge, and hit@5 already answers the q
 
 `correctness`, `groundedness` and `retrieval_relevance` were skipped on purpose. The search mode changes which page is found, and `cited_page` measures that directly. The judge only adds "right page, wrong answer", which was about 3% of Flash Lite answers and shouldn't depend on the mode. Judging 300 more answers on Groq's free tier would take hours.
 
+## Reranking (#153)
+
+**Decision: keep reranking on.** Hybrid search now reranks its results with Voyage `rerank-2.5` (`c72ba82`). Turning it off is just leaving `VOYAGE_API_KEY` empty.
+
+`eval/retrieval.py --modes hybrid --queries raw`, run once with no key and once with it. 99 questions, commit `95f8b71`, no LLM, no fallbacks.
+
+| Hybrid | hit@1 | hit@5 | MRR@10 |
+|---|---|---|---|
+| No rerank | 0.57 | 0.75 | 0.64 |
+| Rerank | **0.68** | **0.86** | **0.76** |
+
+| Source / tag (n) | hit@1 no rerank → rerank | hit@5 no rerank → rerank |
+|---|---|---|
+| student-rules (34) | 0.62 → **0.88** | 0.76 → **0.94** |
+| registrar (23) | 0.83 → 0.87 | 0.96 → 0.91 |
+| catalog (15) | 0.40 → **0.27** | 0.47 → 0.53 |
+| oal (15) | 0.33 → 0.47 | 0.80 → 0.87 |
+| transportation (12) | 0.42 → 0.50 | 0.58 → **0.92** |
+| paraphrase (12) | 0.17 → **0.67** | 0.67 → 0.83 |
+| shorthand (8) | 0.38 → 0.62 | 0.62 → 0.88 |
+
+- **Reranking fixes ranking, not recall.** Paraphrased questions usually found the right page but ranked it low. Reranking moves it to the top.
+- **Catalog is the one source that got worse at hit@1**, and it is still the weakest. Reranking doesn't fix the crowding-out problem from #76. That needs its own fix.
+- 6 questions lost a top-1 hit (ask-05 and catalog-01 fell out of the top 10). 5 questions that weren't found at all now are. Tags with 4 or fewer questions are noise.
+
 ## Test and grader fixes
 
 The eval was wrong more often than the agent. Every fix below turned a failure on a correct answer into a pass:
