@@ -472,11 +472,16 @@ def two_rounds():
     ]
 
 
-def test_answer_stream_yields_each_lookup_then_the_same_result_as_answer():
+def test_answer_stream_yields_text_and_each_lookup_then_the_same_result_as_answer():
     events = list(answer_stream("easiest chem 107 prof and how many q drops",
                                 graph=build_graph(ScriptedModel(two_rounds()))))
-    assert events[:-1] == [("step", {"name": "get_course_grades", "args": {"course": "CHEM 107"}}),
-                           ("step", {"name": "search_student_rules", "args": {"query": "q-drop"}})]
+    assert events[:4] == [("step", {"id": "1", "name": "get_course_grades", "args": {"course": "CHEM 107"}}),
+                          ("step", {"id": "2", "name": "search_student_rules", "args": {"query": "q-drop"}}),
+                          ("output", {"id": "1", "error": False}),
+                          ("output", {"id": "2", "error": False})]
+    # the model's draft, before the checks: the result's answer is what the student sees
+    assert [kind for kind, _ in events[4:]] == ["text", "result"]
+    assert events[4][1]["delta"] == "Martinez is highest (https://anex.us/grades/?dept=CHEM&number=107)."
     kind, streamed = events[-1]
     assert kind == "result"
     expected = answer("easiest chem 107 prof and how many q drops", graph=build_graph(ScriptedModel(two_rounds())))
@@ -486,7 +491,7 @@ def test_answer_stream_yields_each_lookup_then_the_same_result_as_answer():
 def test_answer_stream_returns_the_question_when_the_agent_asks_which_one():
     graph = thread_graph(RecordingModel([looks_up(), asks()]))
     events = list(answer_stream("is professor leyk good", graph=graph, thread_id="t"))
-    assert [kind for kind, _ in events] == ["step", "result"]  # the lookup, not ask_user
+    assert [kind for kind, _ in events] == ["step", "output", "result"]  # the lookup, not ask_user
     assert events[0][1]["name"] == "search_student_rules"
     result = events[-1][1]
     assert result["question"] == LEYK and result["sources"] == []

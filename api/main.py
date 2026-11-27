@@ -129,29 +129,68 @@ def chat(request: request):
         raise HTTPException(status_code=503, detail=UNAVAILABLE)
 
 
-def sse(event: str, data: dict) -> str:
-    """One Server-Sent Event."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+def chunk(data: dict) -> str:
+    """One part of an AI SDK UI message stream: a Server-Sent Event with JSON data."""
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def ui_message_stream(events, thread_id: str):
+    """answer_stream's events as an AI SDK UI message stream, what useChat reads
+    (https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol). Tool calls are dynamic-tool parts
+    (input: their args; no output, the passages stay on the server). The model's words
+    stream as text parts, one per model call; the checked answer comes at the end as a
+    data-answer part, with everything else /chat returns: source-url parts, a
+    data-grade part per chart, and data-question when the agent asks which one."""
+    yield chunk({"type": "start"})
+    text_id = None
+    try:
+        for kind, value in events:
+            if kind == "text":
+                if value["id"] != text_id:
+                    if text_id is not None:
+                        yield chunk({"type": "text-end", "id": text_id})
+                    text_id = value["id"]
+                    yield chunk({"type": "text-start", "id": text_id})
+                yield chunk({"type": "text-delta", "id": text_id, "delta": value["delta"]})
+                continue
+            if text_id is not None:
+                yield chunk({"type": "text-end", "id": text_id})
+                text_id = None
+            if kind == "step":
+                yield chunk({"type": "tool-input-available", "toolCallId": value["id"],
+                             "toolName": value["name"], "input": value["args"], "dynamic": True})
+            elif kind == "output":
+                yield chunk({"type": "tool-output-error", "toolCallId": value["id"],
+                             "errorText": "The lookup failed.", "dynamic": True} if value["error"] else
+                            {"type": "tool-output-available", "toolCallId": value["id"],
+                             "output": None, "dynamic": True})
+            elif kind == "result":
+                body = reply(value, thread_id)
+                for source in body["sources"]:
+                    yield chunk({"type": "source-url", "sourceId": source["source_url"],
+                                 "url": source["source_url"], "title": source["title"]})
+                for chart in body["grades"]:
+                    yield chunk({"type": "data-grade", "id": chart["course"], "data": chart})
+                if body["question"]:
+                    yield chunk({"type": "data-question", "data": body["question"]})
+                yield chunk({"type": "data-answer", "data": {"text": body["answer"]}})
+        yield chunk({"type": "finish"})
+    except Exception:
+        logger.exception("Chat stream failed")
+        yield chunk({"type": "error", "errorText": UNAVAILABLE})
+    yield "data: [DONE]\n\n"
 
 
 @app.post("/chat/stream")
 def chat_stream(request: request):
-    """/chat as Server-Sent Events (#142), so the UI can show each lookup while the agent
-    works: one `step` event per tool call as it starts ({name, args}), then `done` with
-    exactly the JSON /chat returns, or `error` ({detail}) if the agent fails."""
+    """/chat as an AI SDK UI message stream (#142), so the web app's useChat can show
+    each lookup and the answer as the agent works. thread_id: the app sends its chat's id."""
     thread_id, kwargs = turn(request)
-
-    def events():
-        try:
-            for kind, value in answer_stream(request.question, **kwargs):
-                yield sse("step", value) if kind == "step" else sse("done", reply(value, thread_id))
-        except Exception:
-            logger.exception("Chat stream failed")
-            yield sse("error", {"detail": UNAVAILABLE})
-
+    events = ui_message_stream(answer_stream(request.question, **kwargs), thread_id)
     # no-cache and X-Accel-Buffering: no, so proxies pass each event on as it comes
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(events, media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                                      "x-vercel-ai-ui-message-stream": "v1"})
 
 
 # The built UI (cd web && npm run build), served at / when it exists, as in the Docker

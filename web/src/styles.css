@@ -327,9 +327,6 @@ button {
   border-color: var(--line);
   color: var(--ink);
 }
-.choices p {
-  margin: 0 0 12px;
-}
 
 /* --- Conversation -------------------------------------------------------- */
 
@@ -673,49 +670,14 @@ button {
   line-height: 1.4;
 }
 
-/* Tool steps (AI Elements): one expandable row per lookup the agent ran */
-.steps {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.step {
-  margin: 0;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-.step > button {
+/* Lookups (AI Elements Chain of Thought): a folding list of what the agent looked up */
+.steps button {
   background: none;
   border: 0;
+  padding: 4px 0;
   font: inherit;
-  color: var(--ink);
-  text-align: left;
+  font-size: 14px;
   cursor: pointer;
-  padding: 10px 14px;
-}
-.step > button span {
-  overflow-wrap: anywhere;
-}
-.step-content {
-  padding: 0 14px 12px;
-}
-.step-content dl {
-  margin: 0;
-  display: grid;
-  gap: 4px;
-  font-size: 13px;
-}
-.step-content dl > div {
-  display: flex;
-  gap: 8px;
-}
-.step-content dt {
-  color: var(--muted);
-}
-.step-content dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .thinking {
@@ -847,4 +809,11 @@ button {
 /* Checkpoints between answered turns ("Restore to here") */
 .checkpoint {
   margin: 4px 0;
+}
+
+/* The agent's "which one did you mean?" (AI Elements Question) */
+.choices {
+  background: var(--card);
+  border-color: var(--line);
+  border-radius: 12px;
 }
