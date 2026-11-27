@@ -21,7 +21,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-SOURCES = {"anex", "catalog", "oal", "registrar", "student-rules", "transportation"}
+SOURCES = {"anex", "catalog", "libraries", "oal", "registrar", "student-rules", "transportation"}
 FIELDS = ("id", "source", "title", "text", "source_url", "fetched_at")
 
 MIN_WORDS = 100     # the README asks for about 100-400 words per passage

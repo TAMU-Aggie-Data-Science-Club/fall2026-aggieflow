@@ -1,0 +1,815 @@
+{
+ "locations": [
+  {
+   "lid": 3516,
+   "name": "West Campus Library",
+   "category": "library",
+   "url": "https://library.tamu.edu/wcl/",
+   "weeks": [
+    {
+     "Monday": {
+      "date": "2026-11-16",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Tuesday": {
+      "date": "2026-11-17",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Wednesday": {
+      "date": "2026-11-18",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Thursday": {
+      "date": "2026-11-19",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Friday": {
+      "date": "2026-11-20",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "5pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 5pm"
+     },
+     "Saturday": {
+      "date": "2026-11-21",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Sunday": {
+      "date": "2026-11-22",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "12pm",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": true
+      },
+      "rendered": "12pm - 11pm"
+     }
+    },
+    {
+     "Monday": {
+      "date": "2026-11-23",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Tuesday": {
+      "date": "2026-11-24",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 11pm"
+     },
+     "Wednesday": {
+      "date": "2026-11-25",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12pm"
+     },
+     "Thursday": {
+      "date": "2026-11-26",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Friday": {
+      "date": "2026-11-27",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Saturday": {
+      "date": "2026-11-28",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Sunday": {
+      "date": "2026-11-29",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "12pm",
+         "to": "11pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "12pm - 11pm"
+     }
+    }
+   ]
+  },
+  {
+   "lid": 3521,
+   "name": "Policy Sciences & Economics Library",
+   "category": "library",
+   "url": "http://psel.library.tamu.edu/",
+   "weeks": [
+    {
+     "Monday": {
+      "date": "2026-11-16",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Tuesday": {
+      "date": "2026-11-17",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Wednesday": {
+      "date": "2026-11-18",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Thursday": {
+      "date": "2026-11-19",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Friday": {
+      "date": "2026-11-20",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Saturday": {
+      "date": "2026-11-21",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Sunday": {
+      "date": "2026-11-22",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     }
+    },
+    {
+     "Monday": {
+      "date": "2026-11-23",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Tuesday": {
+      "date": "2026-11-24",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Wednesday": {
+      "date": "2026-11-25",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Thursday": {
+      "date": "2026-11-26",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Friday": {
+      "date": "2026-11-27",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Saturday": {
+      "date": "2026-11-28",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     },
+     "Sunday": {
+      "date": "2026-11-29",
+      "times": {
+       "status": "not-set"
+      },
+      "rendered": ""
+     }
+    }
+   ]
+  },
+  {
+   "lid": 1644,
+   "name": "Sterling C. Evans Library",
+   "category": "library",
+   "url": "http://library.tamu.edu",
+   "weeks": [
+    {
+     "Monday": {
+      "date": "2026-11-16",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Tuesday": {
+      "date": "2026-11-17",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Wednesday": {
+      "date": "2026-11-18",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Thursday": {
+      "date": "2026-11-19",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Friday": {
+      "date": "2026-11-20",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "7pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 7pm"
+     },
+     "Saturday": {
+      "date": "2026-11-21",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "7pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "9am - 7pm"
+     },
+     "Sunday": {
+      "date": "2026-11-22",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": true
+      },
+      "rendered": "9am - 12am"
+     }
+    },
+    {
+     "Monday": {
+      "date": "2026-11-23",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Tuesday": {
+      "date": "2026-11-24",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12am"
+     },
+     "Wednesday": {
+      "date": "2026-11-25",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12pm"
+     },
+     "Thursday": {
+      "date": "2026-11-26",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Friday": {
+      "date": "2026-11-27",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Saturday": {
+      "date": "2026-11-28",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Sunday": {
+      "date": "2026-11-29",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "12am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "9am - 12am"
+     }
+    }
+   ]
+  },
+  {
+   "lid": 1645,
+   "name": "Sterling C. Evans Library Annex",
+   "category": "library",
+   "url": "http://library.tamu.edu",
+   "weeks": [
+    {
+     "Monday": {
+      "date": "2026-11-16",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Tuesday": {
+      "date": "2026-11-17",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Wednesday": {
+      "date": "2026-11-18",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Thursday": {
+      "date": "2026-11-19",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Friday": {
+      "date": "2026-11-20",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "7pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 7pm"
+     },
+     "Saturday": {
+      "date": "2026-11-21",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "7pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "9am - 7pm"
+     },
+     "Sunday": {
+      "date": "2026-11-22",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": true
+      },
+      "rendered": "9am - 3am"
+     }
+    },
+    {
+     "Monday": {
+      "date": "2026-11-23",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Tuesday": {
+      "date": "2026-11-24",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 3am"
+     },
+     "Wednesday": {
+      "date": "2026-11-25",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "7am",
+         "to": "12pm"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "7am - 12pm"
+     },
+     "Thursday": {
+      "date": "2026-11-26",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Friday": {
+      "date": "2026-11-27",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Saturday": {
+      "date": "2026-11-28",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Sunday": {
+      "date": "2026-11-29",
+      "times": {
+       "status": "open",
+       "hours": [
+        {
+         "from": "9am",
+         "to": "3am"
+        }
+       ],
+       "currently_open": false
+      },
+      "rendered": "9am - 3am"
+     }
+    }
+   ]
+  },
+  {
+   "lid": 24660,
+   "name": "Swipe Access",
+   "category": "department",
+   "url": "",
+   "weeks": [
+    {
+     "Monday": {
+      "date": "2026-11-16",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Tuesday": {
+      "date": "2026-11-17",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Wednesday": {
+      "date": "2026-11-18",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Thursday": {
+      "date": "2026-11-19",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Friday": {
+      "date": "2026-11-20",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Saturday": {
+      "date": "2026-11-21",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Sunday": {
+      "date": "2026-11-22",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     }
+    },
+    {
+     "Monday": {
+      "date": "2026-11-23",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Tuesday": {
+      "date": "2026-11-24",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Wednesday": {
+      "date": "2026-11-25",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Thursday": {
+      "date": "2026-11-26",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Friday": {
+      "date": "2026-11-27",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     },
+     "Saturday": {
+      "date": "2026-11-28",
+      "times": {
+       "status": "closed",
+       "currently_open": false
+      },
+      "rendered": "Closed"
+     },
+     "Sunday": {
+      "date": "2026-11-29",
+      "times": {
+       "status": "text",
+       "text": "Swipe 24/7",
+       "currently_open": false
+      },
+      "rendered": "Swipe 24/7"
+     }
+    }
+   ]
+  }
+ ]
+}

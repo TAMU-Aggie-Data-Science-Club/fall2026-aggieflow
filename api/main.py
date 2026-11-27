@@ -2,10 +2,12 @@ import json
 import logging
 import os
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI()
@@ -150,5 +152,11 @@ def chat_stream(request: request):
     # no-cache and X-Accel-Buffering: no, so proxies pass each event on as it comes
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-  
 
+
+# The built UI (cd web && npm run build), served at / when it exists, as in the Docker
+# image. WEB_DIST picks another folder. Keep this at the end of the file: a mount at /
+# catches every path, so routes added after it would never be reached.
+WEB_DIST = Path(os.getenv("WEB_DIST", Path(__file__).resolve().parent.parent / "web" / "dist"))
+if (WEB_DIST / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
